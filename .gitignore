@@ -1,0 +1,6 @@
+.venv/*
+venv/*
+
+PythonProject/models/*
+
+PythonProject/LogoDet-3K.lnk
