@@ -3,4 +3,6 @@ venv/*
 
 PythonProject/models/*
 
-PythonProject/LogoDet-3K.lnk
+PythonProject/LogoDet-3K/*
+PythonProject/databases/FlickrLogos-32/*
+PythonProject/databases/FlickrLogos-32/test/*
