@@ -14,6 +14,25 @@ from models import LogoNet
 
 from torch.amp import GradScaler, autocast
 
+'''
+PARAMETRI DI ADDESTRAMENTO & PATHS
+'''
+logodet_path="databases\\LogoDet-3K"
+save_name = "logonet_resnet50_margin04_LR0001.pth"
+save_name_csv="training_log_margin04_40_LR0001.csv"
+
+n_epochs = 40
+
+
+margin=0.4
+p=2
+learning_rate=0.0001
+weight_decay = 0.001
+
+batch_size=24
+num_workers=12
+
+
 
 def train_one_epoch(model, dataloader, optimizer, loss_function, device):
     """Esegue un'epoca di training con Mixed Precision (AMP)."""
@@ -57,7 +76,7 @@ def main():
     print(f"🚀 Utilizzando il device: {device}")
 
     # --- 2. CONFIGURAZIONE PATH E TRASFORMAZIONI ---
-    dataset_path = os.path.join(os.getcwd(), "LogoDet-3K")
+    dataset_path = os.path.join(os.getcwd(), logodet_path)
 
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -81,9 +100,9 @@ def main():
         # Batch size 32 (se hai errori di memoria 'OOM', abbassa a 16)
         train_loader = DataLoader(
             triplet_ds,
-            batch_size=24,
+            batch_size=batch_size,
             shuffle=True,
-            num_workers=12,
+            num_workers=num_workers,
             pin_memory=True if torch.cuda.is_available() else False
         )
         print(f"✅ Dataset caricato: {len(train_base)} immagini totali.")
@@ -97,12 +116,11 @@ def main():
     model = LogoNet().to(device)
 
     # Parametri richiesti: Margin 0.2, LR 0.00025, WD 0.001
-    loss_function = nn.TripletMarginLoss(margin=0.4, p=2)
-    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.001)
+    loss_function = nn.TripletMarginLoss(margin=margin, p=p)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 
     # --- 5. LOOP DI TRAINING ---
-    n_epochs = 40
     train_history = []  # Aggiunto per salvare la storia della loss
     print(f"🏁 Inizio training per {n_epochs} epoche...")
 
@@ -114,15 +132,15 @@ def main():
         train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
 
         # Salvataggio immediato su file
-        pd.DataFrame(train_history).to_csv("training_log_margin04_40_LR0001.csv", index=False)
+        pd.DataFrame(train_history).to_csv("{save_name_csv}", index=False)
 
         print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
 
     # --- 6. SALVATAGGIO ---
-    save_name = "logonet_resnet50_margin04_LR0001.pth"
+    
     torch.save(model.state_dict(), save_name)
     print(f"\n✅ Modello salvato in: {save_name}")
-    print(f"✅ Log di training salvato in: training_log_margin04_40_LR0001.csv")
+    print(f"✅ Log di training salvato in: {save_name_csv}")
 
 
 if __name__ == '__main__':
