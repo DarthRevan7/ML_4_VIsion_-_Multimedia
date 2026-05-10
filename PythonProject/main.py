@@ -96,21 +96,13 @@ def main():
     print("🧠 Configurazione LogoNet (ResNet50)...")
     model = LogoNet().to(device)
 
-    # Caricamento del checkpoint esistente (Margine 0.4)
-    checkpoint_path = "logonet_resnet50_margin04_LR0001.pth"
-    if os.path.exists(checkpoint_path):
-        print(f"🔄 Ripristino pesi dal file: {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    else:
-        print("⚠️ Attenzione: Checkpoint non trovato. Il training partirà da zero!")
-
     # Parametri richiesti: Margin 0.2, LR 0.00025, WD 0.001
     loss_function = nn.TripletMarginLoss(margin=0.4, p=2)
-    optimizer = optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.001)
 
 
     # --- 5. LOOP DI TRAINING ---
-    n_epochs = 20
+    n_epochs = 40
     train_history = []  # Aggiunto per salvare la storia della loss
     print(f"🏁 Inizio training per {n_epochs} epoche...")
 
@@ -122,15 +114,15 @@ def main():
         train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
 
         # Salvataggio immediato su file
-        pd.DataFrame(train_history).to_csv("training_log_margin04.csv", index=False)
+        pd.DataFrame(train_history).to_csv("training_log_margin04_40_LR0001.csv", index=False)
 
         print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
 
     # --- 6. SALVATAGGIO ---
-    save_name = "logonet_resnet50_margin04_LR00005.pth"
+    save_name = "logonet_resnet50_margin04_LR0001.pth"
     torch.save(model.state_dict(), save_name)
     print(f"\n✅ Modello salvato in: {save_name}")
-    print(f"✅ Log di training salvato in: training_log_margin04_LR00005.csv")
+    print(f"✅ Log di training salvato in: training_log_margin04_40_LR0001.csv")
 
 
 if __name__ == '__main__':
