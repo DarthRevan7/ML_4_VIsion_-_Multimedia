@@ -1,7 +1,7 @@
 import os
 
 import pandas as pd
-import torch
+import torch 
 import torch.nn as nn
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
@@ -19,24 +19,25 @@ from torch.amp import GradScaler, autocast
 PARAMETRI DI ADDESTRAMENTO & PATHS
 '''
 
-logodet_path="LogoDet-3K"
+logodet_path="databases\\LogoDet-3K"
 
 
 batch_size=24
 num_workers=12
 margin=0.4
 p=2
-learning_rate=0.00005
+learning_rate=0.0001
 weight=0.001
 
 # ---  LOOP DI TRAINING (RESUME) ---
-start_epoch = 60  # Epoche già fatte
-n_epochs_extra = 20
+start_epoch = 0  # Epoche già fatte
+n_epochs_extra = 5
 total_epochs = start_epoch + n_epochs_extra
 # Caricamento log esistente per non perdere i dati delle prime 40 epoche
 log_vecchio = "training_log_margin04_LR0001.csv"
-log_nuovo = "training_log_margin04_LR00005.csv"
-
+log_nuovo = "training_log_margin04_LR0001_E5.csv"
+# Salvataggio modello
+save_name = "logonet_resnet50_margin04_LR00005.pth"
 
 
 
@@ -155,7 +156,7 @@ def main():
         pd.DataFrame(train_history).to_csv(log_nuovo, index=False)
 
         # Salvataggio checkpoint aggiornato ad ogni epoca (sicurezza)
-        torch.save(model.state_dict(), "logonet_resnet50_margin04_LR00005.pth")
+        torch.save(model.state_dict(), "{save_name}")
 
         print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
 
@@ -182,7 +183,6 @@ def main():
 
 
     # --- 6. SALVATAGGIO ---
-    save_name = "logonet_resnet50_margin04_LR00005.pth"
     torch.save(model.state_dict(), save_name)
     print(f"\n✅ Modello salvato in: {save_name}")
     print(f"✅ Log di training salvato in: {log_nuovo}")
