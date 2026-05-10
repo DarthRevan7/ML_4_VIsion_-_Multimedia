@@ -108,11 +108,6 @@ def main():
     loss_function = nn.TripletMarginLoss(margin=0.4, p=2)
     optimizer = optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.001)
 
-    # --- 5. LOOP DI TRAINING (RESUME) ---
-    start_epoch = 60  # Epoche già fatte
-    n_epochs_extra = 20
-    total_epochs = start_epoch + n_epochs_extra
-
 
     # --- 5. LOOP DI TRAINING ---
     n_epochs = 20
