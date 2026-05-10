@@ -113,53 +113,23 @@ def main():
     n_epochs_extra = 20
     total_epochs = start_epoch + n_epochs_extra
 
-    # Caricamento log esistente per non perdere i dati delle prime 40 epoche
-    log_vecchio = "training_log_margin04_LR0001.csv"
-    log_nuovo = "training_log_margin04_LR00005.csv"
-    if os.path.exists(log_vecchio):
-        train_history = pd.read_csv(log_vecchio).to_dict('records')
-        print(f"📈 Log caricato: {len(train_history)} epoche trovate.")
-    else:
-        train_history = []
-
-    print(f"🏁 Ripresa training: Epoca {start_epoch + 1} fino a {total_epochs}...")
-
-    for epoch in range(start_epoch, total_epochs):
-        print(f"\n--- Epoca {epoch + 1}/{total_epochs} ---")
-
-        # Esegue l'epoca (usa la tua funzione train_one_epoch esistente)
-        avg_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device)
-
-        # Aggiornamento log
-        train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
-        pd.DataFrame(train_history).to_csv(log_nuovo, index=False)
-
-        # Salvataggio checkpoint aggiornato ad ogni epoca (sicurezza)
-        torch.save(model.state_dict(), "logonet_resnet50_margin04_LR00005.pth")
-
-        print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
-
-    print(f"\n✅ Training completato! Modello finale: {checkpoint_path}")
-
 
     # --- 5. LOOP DI TRAINING ---
-    #n_epochs = 20
-    #train_history = []  # Aggiunto per salvare la storia della loss
-    #print(f"🏁 Inizio training per {n_epochs} epoche...")
+    n_epochs = 20
+    train_history = []  # Aggiunto per salvare la storia della loss
+    print(f"🏁 Inizio training per {n_epochs} epoche...")
 
-    #for epoch in range(n_epochs):
-        #print(f"\n--- Epoca {epoch + 1}/{n_epochs} ---")
-        #avg_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device)
+    for epoch in range(n_epochs):
+        print(f"\n--- Epoca {epoch + 1}/{n_epochs} ---")
+        avg_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device)
 
         # Salvataggio dati epoca per il log CSV
-        #train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
+        train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
 
         # Salvataggio immediato su file
-        #pd.DataFrame(train_history).to_csv("training_log_margin04.csv", index=False)
+        pd.DataFrame(train_history).to_csv("training_log_margin04.csv", index=False)
 
-        #print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
-
-
+        print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
 
     # --- 6. SALVATAGGIO ---
     save_name = "logonet_resnet50_margin04_LR00005.pth"
