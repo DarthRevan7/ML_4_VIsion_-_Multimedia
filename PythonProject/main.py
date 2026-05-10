@@ -15,6 +15,28 @@ from models import LogoNet
 from torch.amp import GradScaler, autocast
 
 
+'''
+PARAMETRI DI ADDESTRAMENTO & PATHS
+'''
+
+logodet_path="LogoDet-3K"
+
+
+batch_size=24
+num_workers=12
+margin=0.4
+p=2
+learning_rate=0.00005
+weight=0.001
+
+# ---  LOOP DI TRAINING (RESUME) ---
+start_epoch = 60  # Epoche già fatte
+n_epochs_extra = 20
+total_epochs = start_epoch + n_epochs_extra
+
+
+
+
 def train_one_epoch(model, dataloader, optimizer, loss_function, device):
     """Esegue un'epoca di training con Mixed Precision (AMP)."""
     model.train()
@@ -57,7 +79,7 @@ def main():
     print(f"🚀 Utilizzando il device: {device}")
 
     # --- 2. CONFIGURAZIONE PATH E TRASFORMAZIONI ---
-    dataset_path = os.path.join(os.getcwd(), "LogoDet-3K")
+    dataset_path = os.path.join(os.getcwd(), logodet_path)
 
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -81,9 +103,9 @@ def main():
         # Batch size 32 (se hai errori di memoria 'OOM', abbassa a 16)
         train_loader = DataLoader(
             triplet_ds,
-            batch_size=24,
+            batch_size,
             shuffle=True,
-            num_workers=12,
+            num_workers=num_workers,
             pin_memory=True if torch.cuda.is_available() else False
         )
         print(f"✅ Dataset caricato: {len(train_base)} immagini totali.")
@@ -105,13 +127,10 @@ def main():
         print("⚠️ Attenzione: Checkpoint non trovato. Il training partirà da zero!")
 
     # Parametri richiesti: Margin 0.2, LR 0.00025, WD 0.001
-    loss_function = nn.TripletMarginLoss(margin=0.4, p=2)
-    optimizer = optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.001)
+    loss_function = nn.TripletMarginLoss(margin=margin, p=p)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight)
 
-    # --- 5. LOOP DI TRAINING (RESUME) ---
-    start_epoch = 60  # Epoche già fatte
-    n_epochs_extra = 20
-    total_epochs = start_epoch + n_epochs_extra
+    
 
     # Caricamento log esistente per non perdere i dati delle prime 40 epoche
     log_vecchio = "training_log_margin04_LR0001.csv"
