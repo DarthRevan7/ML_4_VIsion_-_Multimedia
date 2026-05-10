@@ -1,6 +1,8 @@
 .venv/*
 venv/*
 
+.conda/*
+
 PythonProject/models/*
 
 PythonProject/LogoDet-3K/*
