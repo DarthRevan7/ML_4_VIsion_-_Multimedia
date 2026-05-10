@@ -33,6 +33,9 @@ weight=0.001
 start_epoch = 60  # Epoche già fatte
 n_epochs_extra = 20
 total_epochs = start_epoch + n_epochs_extra
+# Caricamento log esistente per non perdere i dati delle prime 40 epoche
+log_vecchio = "training_log_margin04_LR0001.csv"
+log_nuovo = "training_log_margin04_LR00005.csv"
 
 
 
@@ -132,9 +135,7 @@ def main():
 
     
 
-    # Caricamento log esistente per non perdere i dati delle prime 40 epoche
-    log_vecchio = "training_log_margin04_LR0001.csv"
-    log_nuovo = "training_log_margin04_LR00005.csv"
+
     if os.path.exists(log_vecchio):
         train_history = pd.read_csv(log_vecchio).to_dict('records')
         print(f"📈 Log caricato: {len(train_history)} epoche trovate.")
@@ -184,7 +185,7 @@ def main():
     save_name = "logonet_resnet50_margin04_LR00005.pth"
     torch.save(model.state_dict(), save_name)
     print(f"\n✅ Modello salvato in: {save_name}")
-    print(f"✅ Log di training salvato in: training_log_margin04_LR00005.csv")
+    print(f"✅ Log di training salvato in: {log_nuovo}")
 
 
 if __name__ == '__main__':
