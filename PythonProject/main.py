@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torch.amp import GradScaler, autocast
+from datetime import datetime
+import time
 
 # Import dai file locali
 from dataset import LogoDataset, TripletLogoDataset
@@ -19,8 +21,8 @@ PARAMETRI DI ADDESTRAMENTO & PATHS
 logodet_path = "databases\\LogoDet-3K"
 n_epochs = 5 
 
-#Stampa
-stampa_dopo_n_batch = 100
+# Frequenza stampe nel terminale
+stampa_ogni_n_batch = 100
 
 # Hyperparameters
 margin = 0.4
@@ -35,15 +37,13 @@ save_name = f"logonet_resnet50_margin04_E{n_epochs}_LR{learning_rate}.pth"
 save_name_csv = f"training_log_margin04_E{n_epochs}_LR{learning_rate}.csv"
 
 def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler):
-    """Esegue un'epoca di training con Mixed Precision (AMP)."""
+    """Esegue il training puro."""
     model.train()
     running_loss = 0.0
-
     for batch_idx, (anchor, positive, negative, _) in enumerate(dataloader):
         anchor, positive, negative = anchor.to(device), positive.to(device), negative.to(device)
-
+        
         optimizer.zero_grad()
-
         with autocast('cuda'):
             anc_emb = model(anchor)
             pos_emb = model(positive)
@@ -55,23 +55,19 @@ def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler)
         scaler.update()
 
         running_loss += loss.item()
-
-        if batch_idx % stampa_dopo_n_batch == 0:
-            print(f"   Batch {batch_idx:03d} | Loss: {loss.item():.4f}")
+        if batch_idx % stampa_ogni_n_batch == 0:
+            print(f"    Batch {batch_idx:03d} | Loss: {loss.item():.4f}")
 
     return running_loss / len(dataloader)
 
 @torch.no_grad()
-def validate(model, val_loader, loss_function, device):
-    """
-    Calcola Validation Loss e distanze medie Positivi/Negativi.
-    """
+def validate_light(model, val_loader, loss_function, device):
+    """Calcolo leggero di Loss e Distanze medie (Sicuro per la RAM)."""
     model.eval()
     val_loss = 0.0
     dist_pos_total = 0.0
     dist_neg_total = 0.0
     count = 0
-
     for anchor, positive, negative, _ in val_loader:
         anchor, positive, negative = anchor.to(device), positive.to(device), negative.to(device)
         
@@ -82,12 +78,9 @@ def validate(model, val_loader, loss_function, device):
         loss = loss_function(anc_emb, pos_emb, neg_emb)
         val_loss += loss.item()
 
-        # Calcolo distanze medie (Euclidea)
-        dist_pos = F.pairwise_distance(anc_emb, pos_emb, p=2).mean()
-        dist_neg = F.pairwise_distance(anc_emb, neg_emb, p=2).mean()
-        
-        dist_pos_total += dist_pos.item()
-        dist_neg_total += dist_neg.item()
+        # Distanze medie euclidee
+        dist_pos_total += F.pairwise_distance(anc_emb, pos_emb, p=2).mean().item()
+        dist_neg_total += F.pairwise_distance(anc_emb, neg_emb, p=2).mean().item()
         count += 1
 
     return {
@@ -96,171 +89,80 @@ def validate(model, val_loader, loss_function, device):
         "mean_dist_neg": dist_neg_total / count
     }
 
-@torch.no_grad()
-def evaluate_retrieval(model, val_base_dataset, device, k_list=[1, 5, 10]):
-    """
-    Versione corretta: gestisce dataset con metadati extra e ottimizza la RAM.
-    """
-    model.eval()
-    all_embeddings = []
-    all_labels = []
-    
-    # Usiamo un batch più grande per l'estrazione (più veloce)
-    eval_loader = DataLoader(val_base_dataset, batch_size=64, shuffle=False, num_workers=4)
-
-    print("🔍 Estrazione embedding per valutazione...")
-    for batch in eval_loader:
-        # Peschiamo solo i primi due elementi, ignorando il resto (*_)
-        images, labels, *_ = batch 
-        
-        images = images.to(device)
-        embeddings = model(images)
-        
-        all_embeddings.append(embeddings.cpu())
-        
-        # Se labels è una lista o tupla (per colpa del DataLoader), prendiamo il primo elemento
-        if isinstance(labels, (list, tuple)):
-            all_labels.append(labels[0].cpu())
-        else:
-            all_labels.append(labels.cpu())
-
-    all_embeddings = torch.cat(all_embeddings)
-    all_labels = torch.cat(all_labels)
-
-    num_samples = len(all_labels)
-    print(f"📊 Calcolo metriche su {num_samples} campioni...")
-
-    # METRICHE
-    correct_at_1 = 0
-    recall_at_5 = 0
-    recall_at_10 = 0
-    aps = []
-
-    # Per non saturare la RAM, calcoliamo le distanze riga per riga (o a blocchi)
-    # Invece di una matrice N x N da 2.5GB, facciamo confronti diretti
-    for i in range(num_samples):
-        query_emb = all_embeddings[i].unsqueeze(0)
-        query_label = all_labels[i]
-
-        # Calcoliamo le distanze della query verso TUTTI gli altri
-        dists = torch.norm(all_embeddings - query_emb, p=2, dim=1)
-        dists[i] = float('inf') # Escludiamo se stessi
-
-        # Prendiamo i top 10 vicini
-        _, indices = torch.topk(dists, k=10, largest=False)
-        retrieved_labels = all_labels[indices]
-
-        # Precision@1
-        if query_label == retrieved_labels[0]:
-            correct_at_1 += 1
-        
-        # Recall@K
-        if query_label in retrieved_labels[:5]:
-            recall_at_5 += 1
-        if query_label in retrieved_labels[:10]:
-            recall_at_10 += 1
-
-        # mAP (Calcolo sulla riga corrente)
-        relevant_mask = (all_labels == query_label).float()
-        relevant_mask[i] = 0 # Escludiamo la query stessa
-        
-        # Ordiniamo tutti i risultati per la query i-esima per avere AP reale
-        # Nota: per dataset giganti questo è lento, ma è il modo corretto
-        sorted_indices = torch.argsort(dists)
-        sorted_relevant = relevant_mask[sorted_indices]
-        
-        if sorted_relevant.sum() > 0:
-            cumulative_relevant = torch.cumsum(sorted_relevant, dim=0)
-            precision_at_k = cumulative_relevant / torch.arange(1, num_samples + 1)
-            ap = (precision_at_k * sorted_relevant).sum() / sorted_relevant.sum()
-            aps.append(ap.item())
-
-    return {
-        "p@1": correct_at_1 / num_samples,
-        "r@5": recall_at_5 / num_samples,
-        "r@10": recall_at_10 / num_samples,
-        "mAP": sum(aps) / len(aps) if aps else 0
-    }
-
 def main():
-    # --- 1. SETUP DEVICE ---
+    # Crea la cartella checkpoints
+    os.makedirs("checkpoints", exist_ok=True)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         cudnn.benchmark = True
-    print(f"🚀 Utilizzando il device: {device}")
-
-    # --- 2. TRASFORMAZIONI ---
-    train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    val_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    # --- 3. CARICAMENTO DATASET (80/20 Split) ---
-    dataset_path = os.path.join(os.getcwd(), logodet_path)
-    print(f"⏳ Inizializzazione LogoDet-3K...")
     
-    try:
-        # Carichiamo i base dataset
-        train_base = LogoDataset(root_dir=dataset_path, split="train", transform=train_transform)
-        val_base = LogoDataset(root_dir=dataset_path, split="val", transform=val_transform)
+    start_total_time = time.time()
+    print(f"🚀 Training iniziato alle: {datetime.now().strftime('%H:%M:%S')}")
+    print(f"💻 Device: {device} | Worker: {num_workers} | Batch: {batch_size}")
 
-        # Creiamo i triplet dataset
-        triplet_train_ds = TripletLogoDataset(train_base)
-        triplet_val_ds = TripletLogoDataset(val_base)
+    # Transforms e Dataset
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-        train_loader = DataLoader(triplet_train_ds, batch_size=batch_size, shuffle=True, 
-                                  num_workers=num_workers, pin_memory=True)
-        
-        val_loader = DataLoader(triplet_val_ds, batch_size=batch_size, shuffle=False, 
-                                num_workers=num_workers, pin_memory=True)
-        
-        print(f"✅ Dataset caricati. Train: {len(train_base)} | Val: {len(val_base)}")
+    dataset_path = os.path.join(os.getcwd(), logodet_path)
+    train_base = LogoDataset(root_dir=dataset_path, split="train", transform=transform)
+    val_base = LogoDataset(root_dir=dataset_path, split="val", transform=transform)
+    
+    train_loader = DataLoader(TripletLogoDataset(train_base), batch_size=batch_size, 
+                              shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(TripletLogoDataset(val_base), batch_size=batch_size, 
+                            shuffle=False, num_workers=num_workers, pin_memory=True)
+    
+    print(f"✅ Dataset caricati (80/20 split).")
 
-    except Exception as e:
-        print(f"❌ Errore caricamento dati: {e}")
-        return
-
-    # --- 4. INIZIALIZZAZIONE MODELLO, LOSS E OTTIMIZZATORE ---
-    print("🧠 Configurazione LogoNet (ResNet50)...")
     model = LogoNet().to(device)
-    loss_function = nn.TripletMarginLoss(margin=margin, p=p)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    loss_function = nn.TripletMarginLoss(margin=margin, p=p)
     scaler = GradScaler('cuda')
 
-    # --- 5. LOOP DI TRAINING & VALIDATION ---
     train_history = []
-    print(f"🏁 Inizio training per {n_epochs} epoche...")
 
+    # --- LOOP TRAINING ---
     for epoch in range(n_epochs):
-        print(f"\n--- Epoca {epoch + 1}/{n_epochs} ---")
+        epoch_start = time.time()
+        print(f"\n--- Epoca {epoch + 1}/{n_epochs} | Start: {datetime.now().strftime('%H:%M:%S')} ---")
         
-        # 1. TRAINING (La parte più lunga)
+        # 1. Training
         avg_train_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device, scaler)
-
-        print(f"Fine Epoca {epoch+1} | Loss Media: {avg_train_loss}")
         
-        # 2. SALVATAGGIO IMMEDIATO (Se crasha dopo, almeno i pesi sono salvi!)
-        torch.save(model.state_dict(), f"checkpoint_epoch_{epoch+1}.pth")
-        print(f"💾 Checkpoint salvato: checkpoint_epoch_{epoch+1}.pth")
+        # 2. Salvataggio Preventivo
+        torch.save(model.state_dict(), f"checkpoints/checkpoint_epoch_{epoch+1}.pth")
+        print(f"💾 Checkpoint salvato: checkpoints/checkpoint_epoch_{epoch+1}.pth")
 
-        # 3. VALIDATION LOSS (Leggera)
-        val_stats = validate(model, val_loader, loss_function, device)
+        # 3. Validazione Leggera
+        val_stats = validate_light(model, val_loader, loss_function, device)
         
-        # 4. EVALUATION (Quella pesante che ha crashato)
-        # Se crasha qui, non perdiamo il punto 1 e 2!
-        retrieval_stats = evaluate_retrieval(model, val_base, device)
+        # Logging
+        duration = (time.time() - epoch_start) / 60
+        log_data = {
+            "Epoch": epoch + 1,
+            "Train_Loss": avg_train_loss,
+            "Val_Loss": val_stats["val_loss"],
+            "Dist_Pos": val_stats["mean_dist_pos"],
+            "Dist_Neg": val_stats["mean_dist_neg"],
+            "Duration_Min": duration
+        }
+        train_history.append(log_data)
+        pd.DataFrame(train_history).to_csv(save_name_csv, index=False)
 
-    # --- 6. SALVATAGGIO FINALE ---
+        print(f"📊 Fine Epoca {epoch + 1} | Tempo: {duration:.2f} min")
+        print(f"   Train Loss: {avg_train_loss:.4f} | Val Loss: {val_stats['val_loss']:.4f}")
+        print(f"   Dist Pos: {val_stats['mean_dist_pos']:.4f} | Dist Neg: {val_stats['mean_dist_neg']:.4f}")
+
+    # Salvataggio finale
     torch.save(model.state_dict(), save_name)
-    print(f"\n✅ Training completato. Modello finale: {save_name}")
+    total_time = (time.time() - start_total_time) / 3600
+    print(f"\n✅ Training completato in {total_time:.2f} ore.")
+    print(f"📦 Modello finale: {save_name}")
 
 if __name__ == '__main__':
     main()
