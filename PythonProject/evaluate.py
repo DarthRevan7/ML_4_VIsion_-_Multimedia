@@ -14,11 +14,14 @@ from dataset import LogoDataset, TripletLogoDataset, FlickrLogosDataset
 from utils import build_query_gallery
 from models import LogoNet
 
+# Model & Result paths
+model_pth="models\logonet_resnet50_margin04_E10_LR000025.pth"
+result_file_path="ev_res_M04_E10_LR000025.csv"
 
-model_pth="logonet_resnet50_margin04_E5_LR2.5e-05.pth"
+# DB Paths
 logodet_path="databases/LogoDet-3K"
 flicker_path="databases/FlickrLogos32"
-result_file_path="evaluation_results_04_LR000025.csv"
+
 
 
 def set_seed(seed=42):
@@ -164,7 +167,7 @@ def run_evaluation():
                 'Precision@1', 'Precision@5', 'Precision@10',
                 'Recall@1', 'Recall@5', 'Recall@10']
         df[cols].to_csv(result_file_path, index=False)
-        print("\n✅ Valutazione completata. Tabella salvata in 'evaluation_results_04_LR000025.csv'")
+        print(f"\n✅ Valutazione completata. Tabella salvata in {result_file_path}")
         print(df[cols].to_string())
 
 
