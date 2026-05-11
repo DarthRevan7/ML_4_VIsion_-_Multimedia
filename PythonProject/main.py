@@ -18,19 +18,20 @@ from torch.amp import GradScaler, autocast
 PARAMETRI DI ADDESTRAMENTO & PATHS
 '''
 logodet_path="databases\\LogoDet-3K"
-save_name = "logonet_resnet50_margin04_LR0001.pth"
-save_name_csv="training_log_margin04_40_LR0001.csv"
 
-n_epochs = 40
+n_epochs = 5
 
 
 margin=0.4
 p=2
-learning_rate=0.0001
+learning_rate=0.00005
 weight_decay = 0.001
 
 batch_size=24
-num_workers=12
+num_workers=20
+
+save_name = f"logonet_resnet50_margin04_E{n_epochs}_LR{learning_rate}.pth"
+save_name_csv=f"training_log_margin04_E{n_epochs}_LR{learning_rate}.csv"
 
 
 
@@ -132,7 +133,7 @@ def main():
         train_history.append({"Epoch": epoch + 1, "Loss": avg_loss})
 
         # Salvataggio immediato su file
-        pd.DataFrame(train_history).to_csv("{save_name_csv}", index=False)
+        pd.DataFrame(train_history).to_csv(f"{save_name_csv}", index=False)
 
         print(f"📊 Fine Epoca {epoch + 1} | Loss Media: {avg_loss:.4f}")
 
