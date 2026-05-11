@@ -10,4 +10,7 @@ PythonProject/databases/FlickrLogos-32/test/*
 PythonProject/databases/*
 PythonProject/__pycache__/*
 
+
 checkpoints/*
+
+.conda/*
