@@ -27,10 +27,10 @@ stampa_ogni_n_batch = 100
 # Hyperparameters
 margin = 0.4
 p = 2
-learning_rate = 0.000025 
+learning_rate = 0.000025
 weight_decay = 0.001
 batch_size = 24 
-num_workers = 16 
+num_workers = 12
 
 # Nomenclatura File
 save_name = f"logonet_resnet50_margin04_E{n_epochs}_LR{learning_rate}.pth"

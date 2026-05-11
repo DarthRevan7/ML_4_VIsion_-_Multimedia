@@ -4,7 +4,7 @@ import pandas as pd
 from torch.utils.data import DataLoader
 from torchvision import transforms
 import torch.nn.functional as F
-from tqdm import tqdm # Per vedere la barra di avanzamento
+from tqdm import tqdm 
 
 # Import dai tuoi file
 from dataset import LogoDataset
@@ -20,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.no_grad()
 def evaluate_retrieval_pro(model, val_loader_base, device):
-    """Calcolo mAP e Precision@1 riga per riga per non uccidere la RAM."""
+    """Calcolo mAP e Precision@1 gestendo etichette stringa o numeriche."""
     model.eval()
     all_embeddings = []
     all_labels = []
@@ -30,17 +30,21 @@ def evaluate_retrieval_pro(model, val_loader_base, device):
         images, labels, *_ = batch
         embeddings = model(images.to(device))
         all_embeddings.append(embeddings.cpu())
-        all_labels.append(labels[0].cpu() if isinstance(labels, (list, tuple)) else labels.cpu())
+        
+        # Se sono Tensor (numeri), li convertiamo in lista
+        if torch.is_tensor(labels):
+            all_labels.extend(labels.cpu().tolist())
+        else:
+            # Se sono stringhe, le aggiungiamo direttamente alla lista
+            all_labels.extend(list(labels))
 
     all_embeddings = torch.cat(all_embeddings)
-    all_labels = torch.cat(all_labels)
     num_samples = len(all_labels)
 
     correct_at_1 = 0
     aps = []
 
     print(f"   ↳ Calcolo metriche su {num_samples} campioni...")
-    # Usiamo tqdm per non annoiarci mentre calcola
     for i in tqdm(range(num_samples), desc="      Metriche", leave=False):
         query_emb = all_embeddings[i].unsqueeze(0)
         query_label = all_labels[i]
@@ -54,8 +58,8 @@ def evaluate_retrieval_pro(model, val_loader_base, device):
         if query_label == all_labels[indices[0]]:
             correct_at_1 += 1
         
-        # mAP (Versione semplificata per retrieval)
-        rel_mask = (all_labels == query_label).float()
+        # mAP - Creiamo la maschera di rilevanza (1 se stessa classe, 0 altrimenti)
+        rel_mask = torch.tensor([1.0 if l == query_label else 0.0 for l in all_labels])
         rel_mask[i] = 0
         
         if rel_mask.sum() > 0:
@@ -74,7 +78,6 @@ def evaluate_retrieval_pro(model, val_loader_base, device):
 def main():
     print(f"🧐 Inizio valutazione extra sui checkpoint in '{checkpoints_dir}'")
     
-    # Dataset e Loader (usiamo quello base, non Triplet!)
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -84,11 +87,10 @@ def main():
     val_base = LogoDataset(root_dir=os.path.join(os.getcwd(), logodet_path), split="val", transform=transform)
     val_loader = DataLoader(val_base, batch_size=64, shuffle=False, num_workers=8)
 
-    # Trova tutti i file .pth nella cartella checkpoints
     checkpoint_files = sorted([f for f in os.listdir(checkpoints_dir) if f.endswith(".pth")])
     
     if not checkpoint_files:
-        print("❌ Nessun checkpoint trovato. Forse il training non è ancora iniziato?")
+        print("❌ Nessun checkpoint trovato!")
         return
 
     all_results = []
@@ -98,25 +100,26 @@ def main():
         epoch_num = ckpt_name.split('_')[-1].replace('.pth', '')
         print(f"\n📂 Analizzando Epoca {epoch_num} ({ckpt_name})...")
         
-        # Carica i pesi
         ckpt_path = os.path.join(checkpoints_dir, ckpt_name)
         try:
-            model.load_state_dict(torch.load(ckpt_path, map_location=device))
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
         except Exception as e:
             print(f"⚠️ Errore caricamento {ckpt_name}: {e}. Salto.")
             continue
 
-        # Calcola le metriche
         metrics = evaluate_retrieval_pro(model, val_loader, device)
-        
         metrics["Epoch"] = epoch_num
         all_results.append(metrics)
         
-        # Salva man mano (così non perdi dati se crasha)
+        # Salvataggio immediato
         pd.DataFrame(all_results).to_csv(results_file, index=False)
-        print(f"✅ Risultati Epoca {epoch_num}: P@1: {metrics['P@1']:.4f} | mAP: {metrics['mAP']:.4f}")
+        print(f"✅ Risultati Epoca {epoch_num} salvati! P@1: {metrics['P@1']:.4f} | mAP: {metrics['mAP']:.4f}")
 
-    print(f"\n🏁 Valutazione completata! Log salvato in: {results_file}")
+    print(f"\n🏁 Valutazione completata! File: {results_file}")
 
 if __name__ == '__main__':
     main()
