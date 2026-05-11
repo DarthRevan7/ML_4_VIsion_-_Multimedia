@@ -10,3 +10,4 @@ PythonProject/databases/*
 PythonProject/__pycache__/*
 
 checkpoints/*
+.conda/*
