@@ -14,6 +14,15 @@ from dataset import LogoDataset, TripletLogoDataset, FlickrLogosDataset
 from utils import build_query_gallery
 from models import LogoNet
 
+# Model & Result paths
+model_pth="models\logonet_resnet50_margin04_E10_LR000025.pth"
+result_file_path="ev_res_M04_E10_LR000025.csv"
+
+# DB Paths
+logodet_path="databases/LogoDet-3K"
+flicker_path="databases/FlickrLogos32"
+
+
 
 def set_seed(seed=42):
     """Fissa la casualità per risultati riproducibili."""
@@ -30,7 +39,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     q_embs_t = torch.from_numpy(q_embs).to(device)
     g_embs_t = torch.from_numpy(g_embs).to(device)
 
-    # Calcolo distanze vettorizzato in GPU[cite: 3]
+    # Calcolo distanze vettorizzato in GPU
     dists = torch.cdist(q_embs_t, g_embs_t).cpu().numpy()
 
     num_queries = len(q_labels)
@@ -58,7 +67,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
             mrr += 1.0 / (idx + 1)
             cmc_counts[idx:] += 1
 
-        # mAP[cite: 1]
+        # mAP
         hits, sum_prec = 0, 0
         for j, match in enumerate(relevant_matches):
             if match:
@@ -70,11 +79,11 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     # Plot CMC Curve
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, min(21, num_gallery + 1)), cmc_counts[:20] / num_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - 02")
+    plt.title(f"CMC Curve - {dataset_name} - 04_000025")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"cmc_{dataset_name}_02.png")
+    plt.savefig(f"cmc_{dataset_name}_04_000025.png")
     plt.close()
 
     res = {f'Recall@{k}': recall_counts[k] / num_queries for k in ks}
@@ -84,7 +93,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
 
 
 def get_embs_optimized(ds, model, device):
-    """Estrattore di feature con Batch Size alta e AMP[cite: 2]."""
+    """Estrattore di feature con Batch Size alta e AMP."""
     loader = DataLoader(ds, batch_size=128, shuffle=False, num_workers=4, pin_memory=True)
     embs, lbls = [], []
     with torch.no_grad():
@@ -100,9 +109,9 @@ def get_embs_optimized(ds, model, device):
 def run_evaluation():
     set_seed(42)  # Garantisce riproducibilità
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = "logonet_resnet50_margin02.pth"
-    logodet_path = os.path.join(os.getcwd(), "LogoDet-3K")
-    flickr_path = os.path.join(os.getcwd(), "FlickrLogos32.v1i.voc")
+    model_path = model_pth
+    #logodet_path = os.path.join(os.getcwd(), logodet_path)
+    flickr_path = os.path.join(os.getcwd(), flicker_path)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -111,7 +120,8 @@ def run_evaluation():
     ])
 
     model = LogoNet().to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    # CORREZIONE: Aggiunto weights_only=True per eliminare il FutureWarning
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     model.eval()
 
     all_data = []
@@ -121,7 +131,7 @@ def run_evaluation():
         print("🧪 Valutazione LogoDet-3K...")
         test_base = LogoDataset(root_dir=logodet_path, split="test", transform=transform)
 
-        # Calcolo Loss su triplette di test[cite: 1]
+        # Calcolo Loss su triplette di test
         triplet_ds = TripletLogoDataset(test_base)
         loader_loss = DataLoader(triplet_ds, batch_size=64, shuffle=False)
         loss_fn = nn.TripletMarginLoss(margin=0.2, p=2)
@@ -150,14 +160,14 @@ def run_evaluation():
             f_res['Dataset'] = 'FlickrLogos-32'
             all_data.append(f_res)
 
-    # 3. SALVATAGGIO CSV RECAP (Tutti i 9 parametri)[cite: 1]
+    # 3. SALVATAGGIO CSV RECAP (Tutti i 9 parametri)
     if all_data:
         df = pd.DataFrame(all_data)
         cols = ['Dataset', 'Loss', 'mAP', 'MRR',
                 'Precision@1', 'Precision@5', 'Precision@10',
                 'Recall@1', 'Recall@5', 'Recall@10']
-        df[cols].to_csv("evaluation_results_02.csv", index=False)
-        print("\n✅ Valutazione completata. Tabella salvata in 'evaluation_results_04.csv'")
+        df[cols].to_csv(result_file_path, index=False)
+        print(f"\n✅ Valutazione completata. Tabella salvata in {result_file_path}")
         print(df[cols].to_string())
 
 
