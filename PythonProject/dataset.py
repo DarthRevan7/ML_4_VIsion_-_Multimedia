@@ -78,40 +78,35 @@ class TripletLogoDataset(Dataset):
 class FlickrLogosDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         """
-        Dataset per FlickrLogos-32.
-        Struttura attesa: root_dir / brand_name / immagini.jpg
+        Versione aggiornata: ignora la divisione train/test/val e
+        unisce tutte le immagini di ogni brand per la valutazione di robustezza.
         """
         self.root_dir = root_dir
         self.transform = transform
         self.image_paths = []
         self.labels = []
 
-        # Esplora le cartelle dei brand (es. 'adidas', 'apple', etc.)
-        if os.path.exists(root_dir):
-            brands = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
+        if not os.path.exists(root_dir):
+            print(f"⚠️ Attenzione: Percorso {root_dir} non trovato.")
+            return
+
+        # Scansioniamo tutte le cartelle (train, test, val)
+        subsets = ['train', 'test', 'val']
+
+        for subset in subsets:
+            subset_path = os.path.join(root_dir, subset)
+            if not os.path.exists(subset_path):
+                continue
+
+            # All'interno di ogni subset ci sono le cartelle dei brand
+            brands = [d for d in os.listdir(subset_path) if os.path.isdir(os.path.join(subset_path, d))]
+
             for brand in brands:
-                brand_path = os.path.join(root_dir, brand)
-                # Cerca immagini con estensioni comuni
+                brand_path = os.path.join(subset_path, brand)
+                # Prendiamo tutte le immagini del brand in questo specifico subset
                 for ext in ['*.jpg', '*.jpeg', '*.png']:
                     for img_path in glob.glob(os.path.join(brand_path, ext)):
                         self.image_paths.append(img_path)
                         self.labels.append(brand)
-        else:
-            print(f"⚠️ Attenzione: Percorso {root_dir} non trovato.")
 
-    def __len__(self):
-        return len(self.image_paths)
-
-    def __getitem__(self, idx):
-        # Per FlickrLogos-32 carichiamo l'immagine intera (o la trasformiamo)
-        # Nota: FlickrLogos spesso non ha XML di bounding box nello stesso formato di LogoDet
-        from PIL import Image
-        try:
-            img = Image.open(self.image_paths[idx]).convert("RGB")
-            label = self.labels[idx]
-            if self.transform:
-                img = self.transform(img)
-            return img, label
-        except Exception as e:
-            print(f"❌ Errore caricamento {self.image_paths[idx]}: {e}")
-            return None, None
+        print(f"✅ FlickrLogos-32 caricato: {len(self.image_paths)} immagini totali (unione di train/test/val).")
