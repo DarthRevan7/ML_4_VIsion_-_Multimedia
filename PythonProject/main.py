@@ -18,8 +18,8 @@ from models import LogoNet
 '''
 PARAMETRI DI ADDESTRAMENTO & PATHS
 '''
-logodet_path = "databases\\LogoDet-3K"
-n_epochs = 5 
+logodet_path = r"C:\Users\flavi\OneDrive\Desktop\ML_4_VIsion_-_Multimedia\PythonProject\LogoDet-3K"
+n_epochs = 10
 
 # Frequenza stampe nel terminale
 stampa_ogni_n_batch = 100
@@ -27,7 +27,7 @@ stampa_ogni_n_batch = 100
 # Hyperparameters
 margin = 0.4
 p = 2
-learning_rate = 0.000025
+learning_rate = 0.00005
 weight_decay = 0.001
 batch_size = 24 
 num_workers = 12
@@ -120,6 +120,20 @@ def main():
     print(f"✅ Dataset caricati (80/20 split).")
 
     model = LogoNet().to(device)
+
+    # --- RIPARTENZA DALL'INIZIO DELL'EPOCA 4 ---
+    # Carichiamo il lavoro finito dell'epoca 3
+    #checkpoint_path = "checkpoints/checkpoint_epoch_3.pth"
+
+    #if os.path.exists(checkpoint_path):
+        #print(f"♻️ Ripristino completato fino all'epoca 3. Parto con l'epoca 4...")
+        #model.load_state_dict(torch.load(checkpoint_path))
+        #start_epoch = 3  # L'indice 3 nel range(0, 5) è la quarta epoca
+    #else:
+        #print("⚠️ Checkpoint epoca 3 non trovato! Controlla il nome del file.")
+        #start_epoch = 0
+    # ------------------------------------------
+
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     loss_function = nn.TripletMarginLoss(margin=margin, p=p)
     scaler = GradScaler('cuda')
@@ -127,7 +141,7 @@ def main():
     train_history = []
 
     # --- LOOP TRAINING ---
-    for epoch in range(n_epochs):
+    for epoch in range(n_epochs): #start_epoch
         epoch_start = time.time()
         print(f"\n--- Epoca {epoch + 1}/{n_epochs} | Start: {datetime.now().strftime('%H:%M:%S')} ---")
         
@@ -135,12 +149,27 @@ def main():
         avg_train_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device, scaler)
         
         # 2. Salvataggio Preventivo
-        torch.save(model.state_dict(), f"checkpoints/checkpoint_epoch_{epoch+1}.pth")
+        torch.save(model.state_dict(), f"checkpoints/checkpoint_epoch_{epoch+1}_10.pth")
         print(f"💾 Checkpoint salvato: checkpoints/checkpoint_epoch_{epoch+1}.pth")
 
         # 3. Validazione Leggera
         val_stats = validate_light(model, val_loader, loss_function, device)
-        
+
+        # 4. LOGGING IN APPEND (Non sovrascrive il CSV)
+        #duration = (time.time() - epoch_start) / 60
+        #log_data = {
+            #"Epoch": epoch + 1,
+            #"Train_Loss": avg_train_loss,
+            #"Val_Loss": val_stats["val_loss"],
+            #"Dist_Pos": val_stats["mean_dist_pos"],
+            #"Dist_Neg": val_stats["mean_dist_neg"],
+            #"Duration_Min": duration
+        #}
+
+        #df_epoch = pd.DataFrame([log_data])
+        #file_exists = os.path.isfile(save_name_csv)
+        #df_epoch.to_csv(save_name_csv, mode='a', index=False, header=not file_exists)
+
         # Logging
         duration = (time.time() - epoch_start) / 60
         log_data = {
