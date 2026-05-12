@@ -1,7 +1,9 @@
 import os
 import glob
 import random
+from PIL import Image
 import xml.etree.ElementTree as ET
+import torch
 from torch.utils.data import Dataset
 from utils import crop_logo
 
@@ -64,7 +66,11 @@ class TripletLogoDataset(Dataset):
             self.label_to_indices[label].append(idx)
         self.labels_list = list(self.label_to_indices.keys())
 
-    def __len__(self): return len(self.base_dataset)
+    # FIX: Deve restituire la lunghezza del dataset originale
+    def __len__(self):
+        return len(self.base_dataset)
+
+
     def __getitem__(self, idx):
         anchor_img, anchor_label = self.base_dataset[idx]
         pos_idx = random.choice([i for i in self.label_to_indices[anchor_label] if i != idx]) if len(self.label_to_indices[anchor_label]) > 1 else idx
@@ -77,36 +83,66 @@ class TripletLogoDataset(Dataset):
 
 class FlickrLogosDataset(Dataset):
     def __init__(self, root_dir, transform=None):
-        """
-        Versione aggiornata: ignora la divisione train/test/val e
-        unisce tutte le immagini di ogni brand per la valutazione di robustezza.
-        """
         self.root_dir = root_dir
         self.transform = transform
         self.image_paths = []
+        self.bboxes = []
         self.labels = []
 
         if not os.path.exists(root_dir):
-            print(f"⚠️ Attenzione: Percorso {root_dir} non trovato.")
+            print(f"⚠️ Percorso non trovato: {root_dir}")
             return
 
-        # Scansioniamo tutte le cartelle (train, test, val)
-        subsets = ['train', 'test', 'val']
+        # Cerchiamo tutti i file XML ricorsivamente
+        xml_pattern = os.path.join(root_dir, "**/*.xml")
+        xml_files = glob.glob(xml_pattern, recursive=True)
 
-        for subset in subsets:
-            subset_path = os.path.join(root_dir, subset)
-            if not os.path.exists(subset_path):
+        for xml_file in xml_files:
+            try:
+                xml_dir = os.path.dirname(xml_file)
+                tree = ET.parse(xml_file)
+                root = tree.getroot()
+
+                # 1. Prendiamo il nome del file immagine
+                filename_tag = root.find('filename')
+                if filename_tag is None or not filename_tag.text:
+                    continue
+                
+                image_filename = filename_tag.text
+                img_path = os.path.join(xml_dir, image_filename)
+
+                if not os.path.exists(img_path):
+                    continue
+
+                # 2. Prendiamo SOLO IL PRIMO oggetto trovato (UN SOLO logo per immagine)
+                obj = root.find('object') 
+                if obj is not None:
+                    label = obj.find('name').text
+                    bndbox = obj.find('bndbox')
+                    
+                    if bndbox is not None:
+                        xmin = int(float(bndbox.find('xmin').text))
+                        ymin = int(float(bndbox.find('ymin').text))
+                        xmax = int(float(bndbox.find('xmax').text))
+                        ymax = int(float(bndbox.find('ymax').text))
+
+                        # Aggiungiamo i dati una sola volta per questo XML
+                        self.image_paths.append(img_path)
+                        self.bboxes.append((xmin, ymin, xmax, ymax))
+                        self.labels.append(label)
+
+            except Exception as e:
                 continue
 
-            # All'interno di ogni subset ci sono le cartelle dei brand
-            brands = [d for d in os.listdir(subset_path) if os.path.isdir(os.path.join(subset_path, d))]
+        print(f"✅ FlickrLogos-32 caricato: {len(self.image_paths)} immagini univoche caricate.")
 
-            for brand in brands:
-                brand_path = os.path.join(subset_path, brand)
-                # Prendiamo tutte le immagini del brand in questo specifico subset
-                for ext in ['*.jpg', '*.jpeg', '*.png']:
-                    for img_path in glob.glob(os.path.join(brand_path, ext)):
-                        self.image_paths.append(img_path)
-                        self.labels.append(brand)
+    def __len__(self):
+        return len(self.image_paths)
 
-        print(f"✅ FlickrLogos-32 caricato: {len(self.image_paths)} immagini totali (unione di train/test/val).")
+    def __getitem__(self, idx):
+        img = crop_logo(self.image_paths[idx], self.bboxes[idx])
+        if img is None:
+            return torch.zeros(3, 224, 224), "error"
+        if self.transform:
+            img = self.transform(img)
+        return img, self.labels[idx]
