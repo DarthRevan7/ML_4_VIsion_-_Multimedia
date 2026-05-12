@@ -111,7 +111,7 @@ def run_evaluation():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_path = model_pth
     #logodet_path = os.path.join(os.getcwd(), logodet_path)
-    flickr_path = os.path.join(os.getcwd(), flicker_path)
+    flickr_path = flicker_path #os.path.join(os.getcwd(), flicker_path)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -129,24 +129,24 @@ def run_evaluation():
     # 1. EVALUATION LOGODET-3K (Include calcolo Loss matematica)
     if os.path.exists(logodet_path):
         print("🧪 Valutazione LogoDet-3K...")
-        test_base = LogoDataset(root_dir=logodet_path, split="test", transform=transform)
+        # test_base = LogoDataset(root_dir=logodet_path, split="test", transform=transform)
 
-        # Calcolo Loss su triplette di test
-        triplet_ds = TripletLogoDataset(test_base)
-        loader_loss = DataLoader(triplet_ds, batch_size=64, shuffle=False)
-        loss_fn = nn.TripletMarginLoss(margin=0.2, p=2)
-        t_loss = 0
-        with torch.no_grad():
-            for a, p, n, _ in loader_loss:
-                with autocast(device_type=device.type):
-                    t_loss += loss_fn(model(a.to(device)), model(p.to(device)), model(n.to(device))).item()
+        # # Calcolo Loss su triplette di test
+        # triplet_ds = TripletLogoDataset(test_base)
+        # loader_loss = DataLoader(triplet_ds, batch_size=64, shuffle=False)
+        # loss_fn = nn.TripletMarginLoss(margin=margin, p=2)
+        # t_loss = 0
+        # with torch.no_grad():
+        #     for a, p, n, _ in loader_loss:
+        #         with autocast(device_type=device.type):
+        #             t_loss += loss_fn(model(a.to(device)), model(p.to(device)), model(n.to(device))).item()
 
-        q, g = build_query_gallery(test_base)
-        res = calculate_metrics_and_plots(*get_embs_optimized(q, model, device),
-                                          *get_embs_optimized(g, model, device), "LogoDet-3K")
-        res['Loss'] = t_loss / len(loader_loss)
-        res['Dataset'] = 'LogoDet-3K'
-        all_data.append(res)
+        # q, g = build_query_gallery(test_base)
+        # res = calculate_metrics_and_plots(*get_embs_optimized(q, model, device),
+        #                                   *get_embs_optimized(g, model, device), "LogoDet-3K")
+        # res['Loss'] = t_loss / len(loader_loss)
+        # res['Dataset'] = 'LogoDet-3K'
+        # all_data.append(res)
 
     # 2. EVALUATION FLICKRLOGOS-32 (Puro Retrieval)
     if os.path.exists(flickr_path):
