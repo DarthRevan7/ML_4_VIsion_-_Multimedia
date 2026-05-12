@@ -25,7 +25,7 @@ n_epochs = 5
 stampa_ogni_n_batch = 100
 
 # Hyperparameters
-margin = 0.4
+margin = 0.5
 p = 2
 learning_rate = 0.000025
 weight_decay = 0.001
@@ -33,8 +33,8 @@ batch_size = 24
 num_workers = 12
 
 # Nomenclatura File
-save_name = f"logonet_resnet50_margin04_E{n_epochs}_LR{learning_rate}.pth"
-save_name_csv = f"training_log_margin04_E{n_epochs}_LR{learning_rate}.csv"
+save_name = f"logonet_resnet50_margin05_E{n_epochs}_LR{learning_rate}.pth"
+save_name_csv = f"training_log_margin05_E{n_epochs}_LR{learning_rate}.csv"
 
 def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler):
     """Esegue il training puro."""

@@ -2,6 +2,7 @@
 venv/*
 
 PythonProject/models/*
+PythonProject/checkpoints/*
 
 PythonProject/LogoDet-3K/*
 PythonProject/databases/FlickrLogos-32/*
@@ -11,3 +12,5 @@ PythonProject/__pycache__/*
 
 checkpoints/*
 .conda/*
+
+

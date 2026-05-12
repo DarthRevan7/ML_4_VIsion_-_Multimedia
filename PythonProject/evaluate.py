@@ -15,8 +15,8 @@ from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth="models\logonet_resnet50_margin04_E10_LR000025.pth"
-result_file_path="ev_res_M04_E10_LR000025.csv"
+model_pth="logonet_resnet50_margin05_E5_LR000025.pth"
+result_file_path="ev_res_M05_E5_LR000025.csv"
 
 # DB Paths
 logodet_path="databases/LogoDet-3K"
