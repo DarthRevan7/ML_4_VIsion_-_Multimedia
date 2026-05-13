@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from utils import crop_logo
 
 class LogoDataset(Dataset):
-    def __init__(self, root_dir, split="train", transform=None, split_ratio=0.8):
+    def __init__(self, root_dir, split="train", transform=None, split_ratio=0.8, val_ratio=0.1):
         self.root_dir = root_dir
         self.split = split
         self.transform = transform
@@ -22,11 +22,21 @@ class LogoDataset(Dataset):
             for b in brands: all_brands.append((cat, b))
 
         all_brands.sort()
-        random.seed(42)
-        random.shuffle(all_brands)
+        rng = random.Random(42)
+        rng.shuffle(all_brands)
 
-        split_idx = int(len(all_brands) * split_ratio)
-        selected_brands = all_brands[:split_idx] if split == "train" else all_brands[split_idx:]
+        total_brands = len(all_brands)
+        train_end = int(total_brands * split_ratio)
+        val_end = train_end + int(total_brands * val_ratio)
+
+        if split == "train":
+            selected_brands = all_brands[:train_end]
+        elif split == "val":
+            selected_brands = all_brands[train_end:val_end]
+        elif split == "test":
+            selected_brands = all_brands[val_end:]
+        else:
+            raise ValueError("split must be one of: 'train', 'val', 'test'")
 
         for cat, brand in selected_brands:
             brand_path = os.path.join(root_dir, cat, brand)
@@ -54,29 +64,66 @@ class LogoDataset(Dataset):
     def __len__(self): return len(self.image_paths)
     def __getitem__(self, idx):
         img = crop_logo(self.image_paths[idx], self.bboxes[idx])
+        if img is None:
+            return torch.zeros(3, 224, 224), self.labels[idx]
         if self.transform and img:
             img = self.transform(img)
         return img, self.labels[idx]
 
 class TripletLogoDataset(Dataset):
-    def __init__(self, base_dataset):
+    def __init__(self, base_dataset, deterministic=False, seed=42):
         self.base_dataset = base_dataset
+        self.deterministic = deterministic
+        self.seed = seed
         self.label_to_indices = {l: [] for l in set(base_dataset.labels)}
         for idx, label in enumerate(base_dataset.labels):
             self.label_to_indices[label].append(idx)
-        self.labels_list = list(self.label_to_indices.keys())
+        self.labels_list = [label for label, indices in self.label_to_indices.items() if len(indices) > 1]
+
+        if len(self.labels_list) == 0:
+            raise ValueError("TripletLogoDataset requires at least one class with two or more samples")
+
+        self.valid_indices = [idx for idx, label in enumerate(base_dataset.labels) if len(self.label_to_indices[label]) > 1]
+        if len(self.valid_indices) == 0:
+            raise ValueError("TripletLogoDataset requires at least one anchor with a positive sample")
+
+        self.triplets = []
+        if self.deterministic:
+            rng = random.Random(self.seed)
+            for idx in self.valid_indices:
+                anchor_label = base_dataset.labels[idx]
+                positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != idx]
+                if not positive_candidates:
+                    continue
+                pos_idx = rng.choice(positive_candidates)
+                negative_labels = [label for label in self.labels_list if label != anchor_label]
+                if not negative_labels:
+                    continue
+                neg_label = rng.choice(negative_labels)
+                neg_idx = rng.choice(self.label_to_indices[neg_label])
+                self.triplets.append((idx, pos_idx, neg_idx, anchor_label))
 
     # FIX: Deve restituire la lunghezza del dataset originale
     def __len__(self):
-        return len(self.base_dataset)
+        if self.deterministic:
+            return len(self.triplets)
+        return len(self.valid_indices)
 
 
     def __getitem__(self, idx):
-        anchor_img, anchor_label = self.base_dataset[idx]
-        pos_idx = random.choice([i for i in self.label_to_indices[anchor_label] if i != idx]) if len(self.label_to_indices[anchor_label]) > 1 else idx
+        if self.deterministic:
+            anchor_idx, pos_idx, neg_idx, anchor_label = self.triplets[idx]
+        else:
+            anchor_idx = self.valid_indices[idx]
+            anchor_label = self.base_dataset.labels[anchor_idx]
+            rng = random.Random()
+            positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != anchor_idx]
+            pos_idx = rng.choice(positive_candidates)
+            neg_label = rng.choice([l for l in self.labels_list if l != anchor_label])
+            neg_idx = rng.choice(self.label_to_indices[neg_label])
+
+        anchor_img, anchor_label = self.base_dataset[anchor_idx]
         positive_img, _ = self.base_dataset[pos_idx]
-        neg_label = random.choice([l for l in self.labels_list if l != anchor_label])
-        neg_idx = random.choice(self.label_to_indices[neg_label])
         negative_img, _ = self.base_dataset[neg_idx]
         return anchor_img, positive_img, negative_img, anchor_label
 

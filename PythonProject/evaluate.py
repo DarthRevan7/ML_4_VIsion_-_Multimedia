@@ -97,8 +97,9 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
         return res
 
     # Plot CMC Curve
+    cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
-    plt.plot(range(1, min(21, num_gallery + 1)), cmc_counts[:20] / valid_queries, marker='o', color='blue')
+    plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
     plt.title(f"CMC Curve - {dataset_name} - margin04_E5_LR5e-05")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
@@ -195,7 +196,7 @@ def run_evaluation():
         test_base = LogoDataset(root_dir=logodet_path, split="test", transform=transform)
 
         # Calcolo Loss su triplette di test
-        triplet_ds = TripletLogoDataset(test_base)
+        triplet_ds = TripletLogoDataset(test_base, deterministic=True)
         t_loss = compute_triplet_loss(triplet_ds, model, device)
 
         # Calcolo metriche di retrieval

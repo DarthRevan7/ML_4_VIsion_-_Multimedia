@@ -9,16 +9,35 @@ def generate_loss_plot(csv_path, output_image):
 
         # 2. Configura l'estetica del grafico
         plt.figure(figsize=(10, 6))
-        plt.plot(df['Epoch'], df['Loss'],
-                 marker='o',  # Pallino su ogni epoca
-                 linestyle='-',  # Linea continua
-                 color='#1f77b4',  # Blu professionale
-                 linewidth=2,
-                 markersize=6,
-                 label='Training Loss')
+        if 'Train_Loss' in df.columns:
+            plt.plot(df['Epoch'], df['Train_Loss'],
+                     marker='o',
+                     linestyle='-',
+                     color='#1f77b4',
+                     linewidth=2,
+                     markersize=6,
+                     label='Train Loss')
+
+        if 'Val_Loss' in df.columns:
+            plt.plot(df['Epoch'], df['Val_Loss'],
+                     marker='s',
+                     linestyle='--',
+                     color='#d62728',
+                     linewidth=2,
+                     markersize=6,
+                     label='Val Loss')
+
+        if 'Train_Loss' not in df.columns and 'Loss' in df.columns:
+            plt.plot(df['Epoch'], df['Loss'],
+                     marker='o',
+                     linestyle='-',
+                     color='#1f77b4',
+                     linewidth=2,
+                     markersize=6,
+                     label='Loss')
 
         # 3. Aggiungi titoli e label
-        plt.title('Andamento della Training Loss (Margin 0.2)', fontsize=14, fontweight='bold')
+        plt.title('Andamento della Loss di Training (Margin 0.4)', fontsize=14, fontweight='bold')
         plt.xlabel('Epoca', fontsize=12)
         plt.ylabel('Loss', fontsize=12)
 
@@ -28,12 +47,13 @@ def generate_loss_plot(csv_path, output_image):
 
         # 5. Annotazione automatica dell'ultimo valore (opzionale ma utile)
         last_epoch = df['Epoch'].iloc[-1]
-        last_loss = df['Loss'].iloc[-1]
-        plt.annotate(f'Ultima Loss: {last_loss:.4f}',
-                     xy=(last_epoch, last_loss),
-                     xytext=(last_epoch - 4, last_loss + 0.01),
-                     arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=5),
-                     fontsize=10, fontweight='bold', color='red')
+        loss_column = 'Train_Loss' if 'Train_Loss' in df.columns else 'Loss'
+        last_loss = df[loss_column].iloc[-1]
+        plt.annotate(f'Ultima {loss_column}: {last_loss:.4f}',
+                 xy=(last_epoch, last_loss),
+                 xytext=(last_epoch - 4, last_loss + 0.01),
+                 arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=5),
+                 fontsize=10, fontweight='bold', color='red')
 
         # 6. Salva l'immagine
         plt.tight_layout()

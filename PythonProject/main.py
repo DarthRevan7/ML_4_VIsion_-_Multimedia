@@ -40,19 +40,24 @@ def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler)
     """Esegue il training puro."""
     model.train()
     running_loss = 0.0
+    use_amp = device.type == "cuda"
     for batch_idx, (anchor, positive, negative, _) in enumerate(dataloader):
         anchor, positive, negative = anchor.to(device), positive.to(device), negative.to(device)
         
         optimizer.zero_grad()
-        with autocast('cuda'):
+        with autocast(device_type=device.type, enabled=use_amp):
             anc_emb = model(anchor)
             pos_emb = model(positive)
             neg_emb = model(negative)
             loss = loss_function(anc_emb, pos_emb, neg_emb)
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         running_loss += loss.item()
         if batch_idx % stampa_ogni_n_batch == 0:
@@ -114,7 +119,7 @@ def main():
     
     train_loader = DataLoader(TripletLogoDataset(train_base), batch_size=batch_size, 
                               shuffle=True, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(TripletLogoDataset(val_base), batch_size=batch_size, 
+    val_loader = DataLoader(TripletLogoDataset(val_base, deterministic=True), batch_size=batch_size, 
                             shuffle=False, num_workers=num_workers, pin_memory=True)
     
     print(f"✅ Dataset caricati (80/20 split).")
@@ -136,7 +141,7 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     loss_function = nn.TripletMarginLoss(margin=margin, p=p)
-    scaler = GradScaler('cuda')
+    scaler = GradScaler('cuda') if device.type == "cuda" else None
 
     train_history = []
 

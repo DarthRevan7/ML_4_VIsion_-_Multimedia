@@ -21,9 +21,11 @@ def build_query_gallery(base_test_dataset):
             label_to_indices[label] = []
         label_to_indices[label].append(idx)
 
+    rng = random.Random(42)
     query_indices, gallery_indices = [], []
-    for label, indices in label_to_indices.items():
-        random.shuffle(indices)
+    for label in sorted(label_to_indices.keys()):
+        indices = list(label_to_indices[label])
+        rng.shuffle(indices)
         if len(indices) > 0:
             query_indices.append(indices[0])
         if len(indices) > 1:
