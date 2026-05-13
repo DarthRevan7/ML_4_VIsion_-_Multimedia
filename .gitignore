@@ -14,3 +14,7 @@ PythonProject/__pycache__/*
 checkpoints/*
 
 .conda/*
+PythonProject/.idea/misc.xml
+PythonProject/.idea/workspace.xml
+/PythonProject/checkpoints
+/PythonProject/FlickrLogos32
