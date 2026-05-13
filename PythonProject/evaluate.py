@@ -14,12 +14,12 @@ from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth = "logonet_resnet50_M05_E10_LR000025.pth"
+model_pth = "models/logonet_resnet50_margin05_E10_LR2.5e-05.pth"
 result_file_path = "results/eval_M05_E10_LR000025.csv"
 
 # DB Paths
-logodet_path = "LogoDet-3K"
-flicker_path = "FlickrLogos32"
+logodet_path = "databases/LogoDet-3K"
+flicker_path = "databases/FlickrLogos32"
 
 MARGIN = 0.5
 
@@ -33,7 +33,7 @@ def set_seed(seed=42):
         torch.cuda.manual_seed_all(seed)
 
 
-def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[1, 5, 10]):
+def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[50, 100, 500]):
     """
     Calcola i 9 parametri di ranking e genera il grafico CMC.
     """
@@ -234,8 +234,8 @@ def run_evaluation():
     if all_data:
         df = pd.DataFrame(all_data)
         cols = ['Dataset', 'Loss', 'mAP', 'MRR',
-                'Precision@1', 'Precision@5', 'Precision@10',
-                'Recall@1', 'Recall@5', 'Recall@10']
+                'Precision@50', 'Precision@100', 'Precision@500',
+                'Recall@50', 'Recall@100', 'Recall@500']
         df[cols].to_csv(result_file_path, index=False)
         print(f"\n✅ Valutazione completata. Tabella salvata in {result_file_path}")
         print(df[cols].to_string())
