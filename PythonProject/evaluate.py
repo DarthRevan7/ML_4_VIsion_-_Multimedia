@@ -92,6 +92,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
         # --- Recall@K  ---
         # Recall@K = # rilevanti nei top-K / totale rilevanti per la query
         for k in ks:
+            print(f"Relevant matches for K={k}: {np.sum(relevant_matches[:k])} - {relevant_matches[:k]}")
             recall_sums[k] += np.sum(relevant_matches[:k]) / total_relevant
 
         # --- Precision@K ---
