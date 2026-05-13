@@ -13,6 +13,8 @@ class LogoDataset(Dataset):
         self.split = split
         self.transform = transform
         self.image_paths, self.bboxes, self.labels = [], [], []
+        self.failed_crop_count = 0
+        self.failed_crop_paths = []
 
         categorie = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
         all_brands = []
@@ -62,8 +64,17 @@ class LogoDataset(Dataset):
                 except: continue
 
     def __len__(self): return len(self.image_paths)
-    def __getitem__(self, idx):
+    def _load_raw_image(self, idx):
         img = crop_logo(self.image_paths[idx], self.bboxes[idx])
+        if img is None:
+            self.failed_crop_count += 1
+            if len(self.failed_crop_paths) < 10:
+                self.failed_crop_paths.append(self.image_paths[idx])
+                print(f"⚠️ Crop fallito per: {self.image_paths[idx]}")
+        return img
+
+    def __getitem__(self, idx):
+        img = self._load_raw_image(idx)
         if img is None:
             return torch.zeros(3, 224, 224), self.labels[idx]
         if self.transform and img:
@@ -78,52 +89,60 @@ class TripletLogoDataset(Dataset):
         self.label_to_indices = {l: [] for l in set(base_dataset.labels)}
         for idx, label in enumerate(base_dataset.labels):
             self.label_to_indices[label].append(idx)
-        self.labels_list = [label for label, indices in self.label_to_indices.items() if len(indices) > 1]
+        self.labels_list = list(self.label_to_indices.keys())
 
-        if len(self.labels_list) == 0:
-            raise ValueError("TripletLogoDataset requires at least one class with two or more samples")
+        if len(self.labels_list) < 2:
+            raise ValueError("TripletLogoDataset requires at least two different classes")
 
-        self.valid_indices = [idx for idx, label in enumerate(base_dataset.labels) if len(self.label_to_indices[label]) > 1]
-        if len(self.valid_indices) == 0:
-            raise ValueError("TripletLogoDataset requires at least one anchor with a positive sample")
+        self.all_indices = list(range(len(base_dataset.labels)))
 
         self.triplets = []
         if self.deterministic:
             rng = random.Random(self.seed)
-            for idx in self.valid_indices:
+            for idx in self.all_indices:
                 anchor_label = base_dataset.labels[idx]
                 positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != idx]
-                if not positive_candidates:
-                    continue
-                pos_idx = rng.choice(positive_candidates)
+                use_synthetic_positive = len(positive_candidates) == 0
+                pos_idx = rng.choice(positive_candidates) if positive_candidates else idx
                 negative_labels = [label for label in self.labels_list if label != anchor_label]
                 if not negative_labels:
                     continue
                 neg_label = rng.choice(negative_labels)
                 neg_idx = rng.choice(self.label_to_indices[neg_label])
-                self.triplets.append((idx, pos_idx, neg_idx, anchor_label))
+                self.triplets.append((idx, pos_idx, neg_idx, anchor_label, use_synthetic_positive))
+
+    def _make_singleton_positive(self, anchor_img, anchor_idx):
+        if not isinstance(anchor_img, torch.Tensor):
+            return anchor_img
+
+        shift = 1 if (anchor_idx + self.seed) % 2 == 0 else -1
+        return torch.roll(anchor_img, shifts=shift, dims=2)
 
     # FIX: Deve restituire la lunghezza del dataset originale
     def __len__(self):
         if self.deterministic:
             return len(self.triplets)
-        return len(self.valid_indices)
+        return len(self.all_indices)
 
 
     def __getitem__(self, idx):
         if self.deterministic:
-            anchor_idx, pos_idx, neg_idx, anchor_label = self.triplets[idx]
+            anchor_idx, pos_idx, neg_idx, anchor_label, use_synthetic_positive = self.triplets[idx]
         else:
-            anchor_idx = self.valid_indices[idx]
+            anchor_idx = self.all_indices[idx]
             anchor_label = self.base_dataset.labels[anchor_idx]
-            rng = random.Random()
+            rng = random.Random(self.seed + anchor_idx)
             positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != anchor_idx]
-            pos_idx = rng.choice(positive_candidates)
+            use_synthetic_positive = len(positive_candidates) == 0
+            pos_idx = rng.choice(positive_candidates) if positive_candidates else anchor_idx
             neg_label = rng.choice([l for l in self.labels_list if l != anchor_label])
             neg_idx = rng.choice(self.label_to_indices[neg_label])
 
         anchor_img, anchor_label = self.base_dataset[anchor_idx]
-        positive_img, _ = self.base_dataset[pos_idx]
+        if use_synthetic_positive:
+            positive_img = self._make_singleton_positive(anchor_img, anchor_idx)
+        else:
+            positive_img, _ = self.base_dataset[pos_idx]
         negative_img, _ = self.base_dataset[neg_idx]
         return anchor_img, positive_img, negative_img, anchor_label
 

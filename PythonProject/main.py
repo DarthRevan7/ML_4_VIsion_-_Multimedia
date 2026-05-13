@@ -117,8 +117,8 @@ def main():
     train_base = LogoDataset(root_dir=dataset_path, split="train", transform=transform)
     val_base = LogoDataset(root_dir=dataset_path, split="val", transform=transform)
     
-    train_loader = DataLoader(TripletLogoDataset(train_base), batch_size=batch_size, 
-                              shuffle=True, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(TripletLogoDataset(train_base, deterministic=True), batch_size=batch_size, 
+                              shuffle=False, num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(TripletLogoDataset(val_base, deterministic=True), batch_size=batch_size, 
                             shuffle=False, num_workers=num_workers, pin_memory=True)
     
