@@ -18,3 +18,4 @@ PythonProject/.idea/misc.xml
 /PythonProject/checkpoints
 /PythonProject/FlickrLogos32
 PythonProject/logonet_resnet50_margin04_E10_LR2.5e-05.pth
+PythonProject/logonet_resnet50_margin05_E10_LR2.5e-05.pth
