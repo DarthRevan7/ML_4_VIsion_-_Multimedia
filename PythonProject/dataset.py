@@ -40,6 +40,7 @@ class LogoDataset(Dataset):
         else:
             raise ValueError("split must be one of: 'train', 'val', 'test'")
 
+        # Costruiamo la lista filtrando da subito i crop non validi
         for cat, brand in selected_brands:
             brand_path = os.path.join(root_dir, cat, brand)
             xml_files = glob.glob(os.path.join(brand_path, "*.xml"))
@@ -57,27 +58,36 @@ class LogoDataset(Dataset):
                         for ext in ['.jpg', '.jpeg', '.png']:
                             img_path = os.path.join(brand_path, base_name + ext)
                             if os.path.exists(img_path):
+                                # Verifichiamo subito se il crop è valido; se no lo saltiamo
+                                try:
+                                    img = crop_logo(img_path, (xmin, ymin, xmax, ymax))
+                                except Exception:
+                                    img = None
+                                if img is None:
+                                    self.failed_crop_count += 1
+                                    if len(self.failed_crop_paths) < 1000:
+                                        self.failed_crop_paths.append(img_path)
+                                    # non aggiungiamo sample con crop non valido
+                                    break
+
+                                # crop valido: salviamo path/bbox/label (trasformazioni verranno applicate a __getitem__)
                                 self.image_paths.append(img_path)
                                 self.bboxes.append((xmin, ymin, xmax, ymax))
                                 self.labels.append(brand)
                                 break
-                except: continue
+                except Exception:
+                    continue
 
     def __len__(self): return len(self.image_paths)
     def _load_raw_image(self, idx):
-        img = crop_logo(self.image_paths[idx], self.bboxes[idx])
-        if img is None:
-            self.failed_crop_count += 1
-            if len(self.failed_crop_paths) < 10:
-                self.failed_crop_paths.append(self.image_paths[idx])
-                print(f"⚠️ Crop fallito per: {self.image_paths[idx]}")
-        return img
+        return crop_logo(self.image_paths[idx], self.bboxes[idx])
 
     def __getitem__(self, idx):
         img = self._load_raw_image(idx)
         if img is None:
-            return torch.zeros(3, 224, 224), self.labels[idx]
-        if self.transform and img:
+            # Non dovrebbe succedere perché scartiamo i crop non validi durante l'inizializzazione
+            raise RuntimeError(f"Invalid crop at index {idx} for path {self.image_paths[idx]}")
+        if self.transform is not None:
             img = self.transform(img)
         return img, self.labels[idx]
 
@@ -86,7 +96,7 @@ class TripletLogoDataset(Dataset):
         self.base_dataset = base_dataset
         self.deterministic = deterministic
         self.seed = seed
-        self.label_to_indices = {l: [] for l in set(base_dataset.labels)}
+        self.label_to_indices = {l: [] for l in sorted(set(base_dataset.labels))}
         for idx, label in enumerate(base_dataset.labels):
             self.label_to_indices[label].append(idx)
         self.labels_list = list(self.label_to_indices.keys())
@@ -98,25 +108,40 @@ class TripletLogoDataset(Dataset):
 
         self.triplets = []
         if self.deterministic:
-            rng = random.Random(self.seed)
-            for idx in self.all_indices:
-                anchor_label = base_dataset.labels[idx]
-                positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != idx]
-                use_synthetic_positive = len(positive_candidates) == 0
-                pos_idx = rng.choice(positive_candidates) if positive_candidates else idx
-                negative_labels = [label for label in self.labels_list if label != anchor_label]
-                if not negative_labels:
-                    continue
-                neg_label = rng.choice(negative_labels)
-                neg_idx = rng.choice(self.label_to_indices[neg_label])
-                self.triplets.append((idx, pos_idx, neg_idx, anchor_label, use_synthetic_positive))
+            self._regenerate_triplets(self.seed)
+
+    def _regenerate_triplets(self, seed=None):
+        """Precompute triplets in modo deterministico a partire da seed fornito."""
+        self.triplets = []
+        rng = random.Random(self.seed if seed is None else seed)
+        for idx in self.all_indices:
+            anchor_label = self.base_dataset.labels[idx]
+            positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != idx]
+            use_synthetic_positive = len(positive_candidates) == 0
+            pos_idx = rng.choice(positive_candidates) if positive_candidates else idx
+            negative_labels = [label for label in self.labels_list if label != anchor_label]
+            if not negative_labels:
+                continue
+            neg_label = rng.choice(negative_labels)
+            neg_idx = rng.choice(self.label_to_indices[neg_label])
+            self.triplets.append((idx, pos_idx, neg_idx, anchor_label, use_synthetic_positive))
+
+    def on_epoch_start(self, epoch=None):
+        """Called at epoch start to optionally regenerate deterministic triplets with epoch-varying seed.
+        Use this when you want reproducible-but-varying triplets per epoch.
+        """
+        if self.deterministic:
+            seed = (self.seed + epoch) if epoch is not None else self.seed
+            self._regenerate_triplets(seed)
 
     def _make_singleton_positive(self, anchor_img, anchor_idx):
-        if not isinstance(anchor_img, torch.Tensor):
-            return anchor_img
-
-        shift = 1 if (anchor_idx + self.seed) % 2 == 0 else -1
-        return torch.roll(anchor_img, shifts=shift, dims=2)
+        # Creiamo una positive sintetica più sensata: horizontal flip (mantiene struttura semantica)
+        if isinstance(anchor_img, torch.Tensor):
+            try:
+                return torch.flip(anchor_img, dims=[2])
+            except Exception:
+                return anchor_img
+        return anchor_img
 
     # FIX: Deve restituire la lunghezza del dataset originale
     def __len__(self):
@@ -131,12 +156,11 @@ class TripletLogoDataset(Dataset):
         else:
             anchor_idx = self.all_indices[idx]
             anchor_label = self.base_dataset.labels[anchor_idx]
-            rng = random.Random(self.seed + anchor_idx)
             positive_candidates = [i for i in self.label_to_indices[anchor_label] if i != anchor_idx]
             use_synthetic_positive = len(positive_candidates) == 0
-            pos_idx = rng.choice(positive_candidates) if positive_candidates else anchor_idx
-            neg_label = rng.choice([l for l in self.labels_list if l != anchor_label])
-            neg_idx = rng.choice(self.label_to_indices[neg_label])
+            pos_idx = random.choice(positive_candidates) if positive_candidates else anchor_idx
+            neg_label = random.choice([l for l in self.labels_list if l != anchor_label])
+            neg_idx = random.choice(self.label_to_indices[neg_label])
 
         anchor_img, anchor_label = self.base_dataset[anchor_idx]
         if use_synthetic_positive:
@@ -154,6 +178,8 @@ class FlickrLogosDataset(Dataset):
         self.image_paths = []
         self.bboxes = []
         self.labels = []
+        self.failed_crop_count = 0
+        self.failed_crop_paths = []
 
         if not os.path.exists(root_dir):
             print(f"⚠️ Percorso non trovato: {root_dir}")
@@ -208,6 +234,10 @@ class FlickrLogosDataset(Dataset):
     def __getitem__(self, idx):
         img = crop_logo(self.image_paths[idx], self.bboxes[idx])
         if img is None:
+            self.failed_crop_count += 1
+            if len(self.failed_crop_paths) < 10:
+                self.failed_crop_paths.append(self.image_paths[idx])
+                print(f"⚠️ Crop fallito per: {self.image_paths[idx]}")
             return torch.zeros(3, 224, 224), "error"
         if self.transform:
             img = self.transform(img)

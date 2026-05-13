@@ -31,6 +31,14 @@ def set_seed(seed=42):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+    # Rendiamo gli algoritmi deterministici quando possibile
+    try:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True)
+    except Exception:
+        # version differences or inability to force deterministic algorithms
+        pass
 
 
 def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[1, 5, 10]):
@@ -94,6 +102,8 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
         res = {f'Recall@{k}': nan for k in ks}
         res.update({f'Precision@{k}': nan for k in ks})
         res.update({'mAP': nan, 'MRR': nan})
+        res['Queries_Used'] = 0
+        res['Queries_Total'] = len(q_labels)
         return res
 
     # Plot CMC Curve
@@ -110,6 +120,8 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in ks}
     res.update({f'Precision@{k}': precision_sums[k] / valid_queries for k in ks})
     res.update({'mAP': mAP / valid_queries, 'MRR': mrr / valid_queries})
+    res['Queries_Used'] = valid_queries
+    res['Queries_Total'] = len(q_labels)
     return res
 
 
@@ -123,22 +135,22 @@ def get_embs_optimized(ds, model, device):
 
     with torch.no_grad():
         for imgs, l in loader:
-            if imgs is not None:
-                imgs = imgs.to(device)
-
-                if use_cuda:
-                    from torch.amp import autocast
-                    with autocast(device_type='cuda'):
-                        features = model(imgs)
-                else:
+            if imgs is None:
+                continue
+            imgs = imgs.to(device)
+            if use_cuda:
+                from torch.amp import autocast
+                with autocast():
                     features = model(imgs)
+            else:
+                features = model(imgs)
 
-                embs.append(features.cpu().numpy())
+            embs.append(features.cpu().numpy())
 
-                if isinstance(l, torch.Tensor):
-                    lbls.extend(l.cpu().numpy())
-                else:
-                    lbls.extend(l)
+            if isinstance(l, torch.Tensor):
+                lbls.extend(l.cpu().numpy())
+            else:
+                lbls.extend(l)
 
     return np.vstack(embs), np.array(lbls)
 
@@ -159,10 +171,9 @@ def compute_triplet_loss(triplet_ds, model, device):
         for a, p, n, _ in loader:
             a, p, n = a.to(device), p.to(device), n.to(device)
             batch_size = a.size(0)
-
             if use_cuda:
                 from torch.amp import autocast
-                with autocast(device_type='cuda'):
+                with autocast():
                     loss = loss_fn(model(a), model(p), model(n))
             else:
                 loss = loss_fn(model(a), model(p), model(n))
@@ -185,7 +196,9 @@ def run_evaluation():
     ])
 
     model = LogoNet().to(device)
-    model.load_state_dict(torch.load(model_pth, map_location=device, weights_only=True))
+    # Carichiamo i pesi salvati (state_dict)
+    state = torch.load(model_pth, map_location=device)
+    model.load_state_dict(state)
     model.eval()
 
     all_data = []
@@ -199,16 +212,21 @@ def run_evaluation():
         triplet_ds = TripletLogoDataset(test_base, deterministic=True)
         t_loss = compute_triplet_loss(triplet_ds, model, device)
 
-        # Calcolo metriche di retrieval
-        q, g = build_query_gallery(test_base)
+        # Calcolo metriche di retrieval (build_query_gallery ora ritorna meta info)
+        q, g, info = build_query_gallery(test_base)
+        print(f"ℹ️ Query/Gallery split info: {info}")
         res = calculate_metrics_and_plots(
             *get_embs_optimized(q, model, device),
             *get_embs_optimized(g, model, device),
             "LogoDet-3K"
         )
+        # aggiungiamo informazioni sulle query
+        res['Queries_Total'] = res.get('Queries_Total', len(q) + info.get('excluded_singleton_queries', 0))
+        res['Queries_Used'] = res.get('Queries_Used', len(q))
         res['Loss'] = t_loss
         res['Dataset'] = 'LogoDet-3K'
         all_data.append(res)
+        print(f"⚠️ Crop falliti - LogoDet-3K test: {test_base.failed_crop_count}")
     else:
         print(f"⚠️  LogoDet-3K non trovato in: {logodet_path}")
 
@@ -217,7 +235,8 @@ def run_evaluation():
         print("📷 Valutazione FlickrLogos-32...")
         flickr_ds = FlickrLogosDataset(root_dir=flicker_path, transform=transform)
         if len(flickr_ds) > 0:
-            fq, fg = build_query_gallery(flickr_ds)
+            fq, fg, f_info = build_query_gallery(flickr_ds)
+            print(f"ℹ️ Flickr query/gallery info: {f_info}")
             f_res = calculate_metrics_and_plots(
                 *get_embs_optimized(fq, model, device),
                 *get_embs_optimized(fg, model, device),
@@ -226,6 +245,7 @@ def run_evaluation():
             f_res['Loss'] = np.nan  # N/A per retrieval puro
             f_res['Dataset'] = 'FlickrLogos-32'
             all_data.append(f_res)
+            print(f"⚠️ Crop falliti - FlickrLogos-32: {flickr_ds.failed_crop_count}")
         else:
             print("⚠️  FlickrLogos-32 dataset vuoto.")
     else:
@@ -235,8 +255,9 @@ def run_evaluation():
     if all_data:
         df = pd.DataFrame(all_data)
         cols = ['Dataset', 'Loss', 'mAP', 'MRR',
-                'Precision@1', 'Precision@5', 'Precision@10',
-                'Recall@1', 'Recall@5', 'Recall@10']
+            'Precision@1', 'Precision@5', 'Precision@10',
+            'Recall@1', 'Recall@5', 'Recall@10',
+            'Queries_Total', 'Queries_Used']
         df[cols].to_csv(result_file_path, index=False)
         print(f"\n✅ Valutazione completata. Tabella salvata in {result_file_path}")
         print(df[cols].to_string())

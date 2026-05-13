@@ -10,6 +10,8 @@ from torchvision import transforms
 from torch.amp import GradScaler, autocast
 from datetime import datetime
 import time
+import numpy as np
+import random
 
 # Import dai file locali
 from dataset import LogoDataset, TripletLogoDataset
@@ -98,9 +100,23 @@ def main():
     # Crea la cartella checkpoints
     os.makedirs("checkpoints", exist_ok=True)
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Configurazione per riproducibilità: attiva se volete run bit-for-bit riproducibili
+    reproducible = True
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        cudnn.benchmark = True
+        torch.cuda.manual_seed_all(seed)
+    if reproducible:
+        try:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     start_total_time = time.time()
     print(f"🚀 Training iniziato alle: {datetime.now().strftime('%H:%M:%S')}")
@@ -117,9 +133,13 @@ def main():
     train_base = LogoDataset(root_dir=dataset_path, split="train", transform=transform)
     val_base = LogoDataset(root_dir=dataset_path, split="val", transform=transform)
     
-    train_loader = DataLoader(TripletLogoDataset(train_base, deterministic=True), batch_size=batch_size, 
-                              shuffle=False, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(TripletLogoDataset(val_base, deterministic=True), batch_size=batch_size, 
+    # Training: campionamento stocastico delle triplette per aumentare la varietà tra epoche
+    train_ds = TripletLogoDataset(train_base, deterministic=False)
+    val_ds = TripletLogoDataset(val_base, deterministic=True)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, 
+                              shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, 
                             shuffle=False, num_workers=num_workers, pin_memory=True)
     
     print(f"✅ Dataset caricati (80/20 split).")
@@ -141,7 +161,7 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     loss_function = nn.TripletMarginLoss(margin=margin, p=p)
-    scaler = GradScaler('cuda') if device.type == "cuda" else None
+    scaler = GradScaler() if device.type == "cuda" else None
 
     train_history = []
 
@@ -149,7 +169,12 @@ def main():
     for epoch in range(n_epochs): #start_epoch
         epoch_start = time.time()
         print(f"\n--- Epoca {epoch + 1}/{n_epochs} | Start: {datetime.now().strftime('%H:%M:%S')} ---")
-        
+        # Permetti al dataset di training di rigenerare le triplette (se implementato)
+        if hasattr(train_loader.dataset, 'on_epoch_start'):
+            try:
+                train_loader.dataset.on_epoch_start(epoch)
+            except Exception:
+                pass
         # 1. Training
         avg_train_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device, scaler)
         
@@ -197,6 +222,21 @@ def main():
     total_time = (time.time() - start_total_time) / 3600
     print(f"\n✅ Training completato in {total_time:.2f} ore.")
     print(f"📦 Modello finale: {save_name}")
+    print(f"⚠️ Crop falliti - train: {train_base.failed_crop_count} | val: {val_base.failed_crop_count}")
+
+    # Salviamo report dei crop falliti per ispezione, se presenti
+    if train_base.failed_crop_count > 0 and len(train_base.failed_crop_paths) > 0:
+        try:
+            pd.DataFrame({'failed_path': train_base.failed_crop_paths}).to_csv('failed_crops_train.csv', index=False)
+            print('📝 Report crop falliti salvato: failed_crops_train.csv')
+        except Exception:
+            pass
+    if val_base.failed_crop_count > 0 and len(val_base.failed_crop_paths) > 0:
+        try:
+            pd.DataFrame({'failed_path': val_base.failed_crop_paths}).to_csv('failed_crops_val.csv', index=False)
+            print('📝 Report crop falliti salvato: failed_crops_val.csv')
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()
