@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import torch.nn as nn
 import numpy as np
@@ -8,18 +9,22 @@ import random
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+
 # Import moduli locali
 from dataset import LogoDataset, TripletLogoDataset, FlickrLogosDataset
 from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth = "logonet_resnet50_margin04_E5_LR5e-05.pth"
-result_file_path = "final_eval_margin04_E5_LR5e-05.csv"
+model_pth = "models\\logonet_resnet50_margin04_E10_LR2.5e-05.pth"
+result_file_path = "results\\final_eval_logonet_resnet50_margin04_E10_LR2.5e-05.csv"
 
 # DB Paths
-logodet_path = "LogoDet-3K"
-flicker_path = "FlickrLogos32"
+logodet_path = "databases\\LogoDet-3K"
+flicker_path = "databases\\FlickrLogos32"
 
 MARGIN = 0.4
 
@@ -41,16 +46,30 @@ def set_seed(seed=42):
         pass
 
 
+def load_model_state(model_path, device):
+    """Carica in modo robusto uno state_dict o un checkpoint wrapper."""
+    try:
+        state = torch.load(model_path, map_location=device, weights_only=True)
+    except TypeError:
+        state = torch.load(model_path, map_location=device)
+
+    if isinstance(state, dict):
+        if "state_dict" in state and isinstance(state["state_dict"], dict):
+            return state["state_dict"]
+        if "model_state_dict" in state and isinstance(state["model_state_dict"], dict):
+            return state["model_state_dict"]
+    return state
+
+
 def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[1, 5, 10]):
     """
     Calcola i 9 parametri di ranking e genera il grafico CMC.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    q_embs_t = torch.from_numpy(q_embs).to(device)
-    g_embs_t = torch.from_numpy(g_embs).to(device)
-
-    # Calcolo distanze vettorizzato in GPU
-    dists = torch.cdist(q_embs_t, g_embs_t).cpu().numpy()
+    # Evitiamo torch.cdist su CUDA: con algoritmi deterministici attivi può fallire per CuBLAS.
+    # Il calcolo su CPU è stabile e sufficiente per la fase di evaluation.
+    q_embs_t = torch.from_numpy(q_embs)
+    g_embs_t = torch.from_numpy(g_embs)
+    dists = torch.cdist(q_embs_t, g_embs_t).numpy()
 
     num_gallery = len(g_labels)
     mAP, mrr = 0.0, 0.0
@@ -110,11 +129,11 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - margin04_E5_LR5e-05")
+    plt.title(f"CMC Curve - {dataset_name} - margin04_E10_LR2.5e-05")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"cmc_{dataset_name}_margin04_E5_LR5e-05.png")
+    plt.savefig(f"results\\cmc_{dataset_name}_margin04_E10_LR2.5e-05.png")
     plt.close()
 
     res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in ks}
@@ -140,7 +159,7 @@ def get_embs_optimized(ds, model, device):
             imgs = imgs.to(device)
             if use_cuda:
                 from torch.amp import autocast
-                with autocast():
+                with autocast(device_type="cuda"):
                     features = model(imgs)
             else:
                 features = model(imgs)
@@ -173,7 +192,7 @@ def compute_triplet_loss(triplet_ds, model, device):
             batch_size = a.size(0)
             if use_cuda:
                 from torch.amp import autocast
-                with autocast():
+                with autocast(device_type="cuda"):
                     loss = loss_fn(model(a), model(p), model(n))
             else:
                 loss = loss_fn(model(a), model(p), model(n))
@@ -196,8 +215,8 @@ def run_evaluation():
     ])
 
     model = LogoNet().to(device)
-    # Carichiamo i pesi salvati (state_dict)
-    state = torch.load(model_pth, map_location=device)
+    # Carichiamo i pesi salvati in modo robusto
+    state = load_model_state(model_pth, device)
     model.load_state_dict(state)
     model.eval()
 
