@@ -29,7 +29,7 @@ stampa_ogni_n_batch = 100
 # Hyperparameters
 margin = 0.4
 p = 2
-learning_rate = 0.00005
+learning_rate = 0.000025
 weight_decay = 0.001
 batch_size = 24 
 num_workers = 12
