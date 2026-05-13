@@ -19,14 +19,14 @@ from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth = "models\\logonet_resnet50_margin04_E10_LR2.5e-05.pth"
-result_file_path = "results\\final_eval_logonet_resnet50_margin04_E10_LR2.5e-05.csv"
+model_pth = "models\\logonet_resnet50_margin05_E10_LR2.5e-05.pth"
+result_file_path = "results\\final_eval_logonet_resnet50_margin05_E10_LR2.5e-05.csv"
 
 # DB Paths
 logodet_path = "databases\\LogoDet-3K"
 flicker_path = "databases\\FlickrLogos32"
 
-MARGIN = 0.4
+MARGIN = 0.5
 
 
 def set_seed(seed=42):
@@ -129,11 +129,11 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - margin04_E10_LR2.5e-05")
+    plt.title(f"CMC Curve - {dataset_name} - margin05_E10_LR2.5e-05")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"results\\cmc_{dataset_name}_margin04_E10_LR2.5e-05.png")
+    plt.savefig(f"results\\cmc_{dataset_name}_margin05_E10_LR2.5e-05.png")
     plt.close()
 
     res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in ks}
