@@ -101,7 +101,7 @@ def main():
     os.makedirs("checkpoints", exist_ok=True)
     
     # Configurazione per riproducibilità: attiva se volete run bit-for-bit riproducibili
-    reproducible = True
+    reproducible = False # Cambia a True se vuoi massima riproducibilità (può rallentare o crashare)
     seed = 42
     random.seed(seed)
     np.random.seed(seed)
@@ -118,6 +118,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    
     start_total_time = time.time()
     print(f"🚀 Training iniziato alle: {datetime.now().strftime('%H:%M:%S')}")
     print(f"💻 Device: {device} | Worker: {num_workers} | Batch: {batch_size}")
@@ -130,6 +131,7 @@ def main():
     ])
 
     dataset_path = os.path.join(os.getcwd(), logodet_path)
+    print("DEBUG: Caricamento dataset...")
     train_base = LogoDataset(root_dir=dataset_path, split="train", transform=transform)
     val_base = LogoDataset(root_dir=dataset_path, split="val", transform=transform)
     
