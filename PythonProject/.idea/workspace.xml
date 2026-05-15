@@ -2,8 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="7102781e-35bf-433c-a397-4b6876a1af3f" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/main_au.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main_hnm.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/dataset.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/evaluate.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluate.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/plot_loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/plot_loss.py" afterDir="false" />
     </list>
@@ -30,6 +31,7 @@
     "Python.evaluate.executor": "Run",
     "Python.main.executor": "Run",
     "Python.main_au.executor": "Run",
+    "Python.main_hnm.executor": "Run",
     "Python.plot_loss.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -44,7 +46,7 @@
       <recent name="C:\Users\flavi\OneDrive\Desktop\ML_4_VIsion_-_Multimedia\PythonProject" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.plot_loss">
+  <component name="RunManager" selected="Python.evaluate">
     <configuration name="evaluate" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="PythonProject" />
       <option name="ENV_FILES" value="" />
@@ -117,6 +119,30 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="main_hnm" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="PythonProject" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="DEBUG_JUST_MY_CODE" value="false" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main_hnm.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="plot_loss" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="PythonProject" />
       <option name="ENV_FILES" value="" />
@@ -143,8 +169,9 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.plot_loss" />
         <item itemvalue="Python.evaluate" />
+        <item itemvalue="Python.plot_loss" />
+        <item itemvalue="Python.main_hnm" />
         <item itemvalue="Python.main_au" />
         <item itemvalue="Python.main" />
       </list>

@@ -68,4 +68,4 @@ def generate_loss_plot(csv_path, output_image):
 # Esecuzione
 if __name__ == "__main__":
     # Assicurati che il nome del file CSV sia corretto
-    generate_loss_plot('training_log_margin04_E15_LR_decay_aug.csv', 'loss_plot_margin04_E15_LR_decay_aug.png')
+    generate_loss_plot('training_log_margin04_E15_LR_decay_aug_hardmining.csv', 'loss_plot_margin04_E15_LR_decay_aug_hardmining.png')
