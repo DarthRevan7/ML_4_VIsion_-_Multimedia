@@ -20,8 +20,8 @@ from models import LogoNet
 '''
 PARAMETRI DI ADDESTRAMENTO & PATHS
 '''
-logodet_path = r"C:\Users\flavi\OneDrive\Desktop\ML_4_VIsion_-_Multimedia\PythonProject\LogoDet-3K"
-n_epochs = 10
+logodet_path = "databases\\LogoDet-3K"
+n_epochs = 5
 
 # Frequenza stampe nel terminale
 stampa_ogni_n_batch = 100
@@ -29,9 +29,9 @@ stampa_ogni_n_batch = 100
 # Hyperparameters
 margin = 0.5
 p = 2
-learning_rate = 0.000025
+learning_rate = 0.00001
 weight_decay = 0.001
-batch_size = 24 
+batch_size = 24
 num_workers = 12
 
 # Nomenclatura File
