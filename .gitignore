@@ -26,3 +26,6 @@ PythonProject/.idea/workspace.xml
 PythonProject/.idea/workspace.xml
 PythonProject/logonet_resnet50_margin04_E20_LR_decay.pth
 PythonProject/.idea/workspace.xml
+PythonProject/.idea/workspace.xml
+PythonProject/logonet_resnet50_margin04_E20_LR_decay_aug.pth
+PythonProject/logonet_resnet50_margin04_E15_LR_decay_aug.pth

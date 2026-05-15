@@ -19,8 +19,8 @@ from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth = "checkpoints/checkpoint_epoch_15_of_20_phase2.pth"
-result_file_path = "final_eval_logonet_resnet50_margin04_E15_LR_decay.csv"
+model_pth = "logonet_resnet50_margin04_E15_LR_decay_aug.pth"
+result_file_path = "final_eval_logonet_resnet50_margin04_E15_LR_decay_aug.csv"
 
 # DB Paths
 logodet_path = "LogoDet-3K"
@@ -130,11 +130,11 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - margin04_E15_LR_decay")
+    plt.title(f"CMC Curve - {dataset_name} - margin04_E20_LR_decay_aug")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"results\\cmc_{dataset_name}_margin04_E15_LR_decay.png")
+    plt.savefig(f"results\\cmc_{dataset_name}_margin04_E20_LR_decay_aug.png")
     plt.close()
 
     res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in ks}
