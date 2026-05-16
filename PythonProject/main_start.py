@@ -27,16 +27,21 @@ n_epochs = 5
 stampa_ogni_n_batch = 100
 
 # Hyperparameters
-margin = 0.5
+margin = 0.6
 p = 2
-learning_rate = 0.00001
+learning_rate = 0.000001
 weight_decay = 0.001
 batch_size = 24
 num_workers = 12
 
 # Nomenclatura File
-save_name = f"logonet_resnet50_margin05_E{n_epochs}_LR{learning_rate}.pth"
-save_name_csv = f"training_log_margin05_E{n_epochs}_LR{learning_rate}.csv"
+margin_clean = f"{margin:.1f}".replace('.', '')
+lr_clean = f"{learning_rate:.6f}".split('.')[1]
+
+save_name = f"logonet_resnet50_margin{margin_clean}_E{n_epochs}_LR{lr_clean}.pth"
+save_name_csv = f"training_log_margin{margin_clean}_E{n_epochs}_LR{lr_clean}.csv"
+
+print(f"Salvataggio modello in: {save_name} | Log CSV: {save_name_csv}")
 
 def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler):
     """Esegue il training puro."""
@@ -137,7 +142,7 @@ def main():
     
     # Training: campionamento stocastico delle triplette per aumentare la varietà tra epoche
     train_ds = TripletLogoDataset(train_base, deterministic=False)
-    val_ds = TripletLogoDataset(val_base, deterministic=True)
+    val_ds = TripletLogoDataset(val_base, deterministic=False)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, 
                               shuffle=True, num_workers=num_workers, pin_memory=True)
