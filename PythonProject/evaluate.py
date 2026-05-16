@@ -19,14 +19,14 @@ from utils import build_query_gallery
 from models import LogoNet
 
 # Model & Result paths
-model_pth = "logonet_resnet50_margin04_E15_LR_decay_aug_hardmining.pth"
-result_file_path = "final_eval_logonet_resnet50_margin04_E15_LR_decay_aug_hardmining.csv"
+model_pth = "logonet_resnet50_margin05_E5_LR2.5e-06.pth"
+result_file_path = "final_eval_logonet_resnet50_margin05_E5_LR2.5e-06.csv"
 
 # DB Paths
-logodet_path = "LogoDet-3K"
-flicker_path = "FlickrLogos32"
+logodet_path = "databases\\LogoDet-3K"
+flicker_path = "databases\\FlickrLogos32"
 
-MARGIN = 0.4
+MARGIN = 0.5
 
 
 def set_seed(seed=42):
@@ -61,7 +61,7 @@ def load_model_state(model_path, device):
     return state
 
 
-def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[1, 5, 10]):
+def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name, ks=[1, 5, 10], kr=[50, 100, 200]):
     """
     Calcola i 9 parametri di ranking e genera il grafico CMC.
     """
@@ -73,7 +73,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
 
     num_gallery = len(g_labels)
     mAP, mrr = 0.0, 0.0
-    recall_sums = {k: 0.0 for k in ks}
+    recall_sums = {k: 0.0 for k in kr}
     precision_sums = {k: 0.0 for k in ks}
     cmc_counts = np.zeros(num_gallery)
     valid_queries = 0  # conta solo query con almeno un rilevante in gallery
@@ -91,7 +91,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
 
         # --- Recall@K  ---
         # Recall@K = # rilevanti nei top-K / totale rilevanti per la query
-        for k in ks:
+        for k in kr:
             print(f"Relevant matches for K={k}: {np.sum(relevant_matches[:k])} - {relevant_matches[:k]}")
             recall_sums[k] += np.sum(relevant_matches[:k]) / total_relevant
 
@@ -119,7 +119,7 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     if valid_queries == 0:
         print(f"⚠️  [{dataset_name}] Nessuna query con rilevanti in gallery. Metriche non calcolabili.")
         nan = float('nan')
-        res = {f'Recall@{k}': nan for k in ks}
+        res = {f'Recall@{k}': nan for k in kr}
         res.update({f'Precision@{k}': nan for k in ks})
         res.update({'mAP': nan, 'MRR': nan})
         res['Queries_Used'] = 0
@@ -130,14 +130,14 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - margin04_E20_LR_decay_aug_hardmining")
+    plt.title(f"CMC Curve - {dataset_name} - margin05_E5_LR2.5e-06")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"results\\cmc_{dataset_name}_margin04_E20_LR_decay_aug_hardmining.png")
+    plt.savefig(f"results\\cmc_{dataset_name}_margin05_E5_LR2.5e-06.png")
     plt.close()
 
-    res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in ks}
+    res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in kr}
     res.update({f'Precision@{k}': precision_sums[k] / valid_queries for k in ks})
     res.update({'mAP': mAP / valid_queries, 'MRR': mrr / valid_queries})
     res['Queries_Used'] = valid_queries
@@ -276,7 +276,7 @@ def run_evaluation():
         df = pd.DataFrame(all_data)
         cols = ['Dataset', 'Loss', 'mAP', 'MRR',
             'Precision@1', 'Precision@5', 'Precision@10',
-            'Recall@1', 'Recall@5', 'Recall@10',
+            'Recall@50', 'Recall@100', 'Recall@200',
             'Queries_Total', 'Queries_Used']
         df[cols].to_csv(result_file_path, index=False)
         print(f"\n✅ Valutazione completata. Tabella salvata in {result_file_path}")
