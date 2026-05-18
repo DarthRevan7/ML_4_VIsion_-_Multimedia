@@ -10,37 +10,48 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-# Importiamo il modulo originale (eseguirà solo le inizializzazioni top-level)
+# Importiamo il modulo originale
 import evaluate
 
 
-def format_param(s):
+def parse_filename_for_label(filename):
     """
-    Ripristina il punto decimale se la stringa inizia con 0 e non lo contiene.
-    Es: '05' -> '0.5', '00025' -> '0.00025'
+    Estrae i token letterali dal nome del file per costruire 
+    la stringa esatta richiesta nella terza immagine.
     """
-    if s.startswith('0') and '.' not in s:
-        return f"0.{s[1:]}"
-    return s
+    epochs_match = re.search(r'[eE]([0-9]+)', filename)
+    margin_match = re.search(r'(?:margin|M)([0-9.eE+-]+)', filename)
+    lr_match = re.search(r'[lL][rR]([0-9.eE+-]*)', filename)
+    
+    ep = epochs_match.group(1) if epochs_match else ""
+    ma = margin_match.group(1) if margin_match else ""
+    lr = lr_match.group(1) if lr_match else ""
+    
+    # Costruiamo la dicitura dinamica adattandoci ai casi reali (es. se LR è vuoto)
+    parts = []
+    if ep: parts.append(f"E{ep}")
+    if ma: parts.append(f"M{ma}")
+    parts.append(f"LR{lr}" if lr else "LR")
+    
+    return " - ".join(["Dataset"] + parts)
 
 
-def parse_filename(filename):
+def to_float_value(s):
     """
-    Estrae i tre iperparametri fondamentali usando le espressioni regolari.
+    Converte in float i parametri estratti per non rompere i calcoli interni di evaluate.py
+    Es: '05' -> 0.5, '0.4' -> 0.4
     """
-    margin_match = re.search(r'(?:margin|M)([0-9.]+)', filename, re.IGNORECASE)
-    epochs_match = re.search(r'E([0-9]+)', filename, re.IGNORECASE)
-    lr_match = re.search(r'LR([0-9.]+)', filename, re.IGNORECASE)
-    
-    margin_str = format_param(margin_match.group(1)) if margin_match else "0.5"
-    epochs_str = epochs_match.group(1) if epochs_match else "5"
-    lr_str = format_param(lr_match.group(1)) if lr_match else "0.001"
-    
-    return epochs_str, margin_str, lr_str
+    if not s:
+        return 0.5
+    if s.startswith('0') and '.' not in s and len(s) > 1:
+        return float(f"0.{s[1:]}")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.5
 
 
 def main():
-    # Creiamo la cartella dei risultati se non esiste
     os.makedirs("results", exist_ok=True)
     
     # 1. Raccolta dei file dei modelli (.pth)
@@ -48,18 +59,16 @@ def main():
     models_olds = glob.glob(os.path.join("models", "olds", "*.pth"))
     
     if not models_root and not models_olds:
-        print("❌ Nessun modello .pth trovato in 'models' o 'models/olds'. Check dei path fallito.")
+        print("❌ Nessun modello .pth trovato. Verifica le cartelle 'models' e 'models/olds'.")
         return
         
-    # STRATEGIA DI TEST RICHIESTA: 
-    # Mettiamo in cima alla coda un modello di 'models/olds' e uno di 'models'
+    # STRATEGIA DI TEST: Un modello da olds e uno da root in cima alla lista
     ordered_models = []
     if models_olds:
         ordered_models.append(models_olds[0])
     if models_root:
         ordered_models.append(models_root[0])
         
-    # Aggiungiamo tutti gli altri modelli rimanenti evitando duplicati
     for m in models_olds[1:]:
         if m not in ordered_models:
             ordered_models.append(m)
@@ -68,58 +77,75 @@ def main():
             ordered_models.append(m)
             
     print(f"📂 Trovati {len(ordered_models)} modelli totali da elaborare.")
-    print(f"🔬 I primi due modelli usati per il test provengono da cartelle diverse.")
     
-    final_dfs = []
-    continue_all = False  # Flag per lo skip dei prompt futuri
+    # Questa lista conterrà tutte le righe (comprese le intestazioni ripetute e le righe vuote)
+    final_rows = []
+    continue_all = False  
     
-    # 2. Ciclo di pianificazione dello scheduling
+    # 2. Ciclo di esecuzione sui modelli
     for idx, model_path in enumerate(ordered_models):
         filename = os.path.basename(model_path)
         print(f"\n" + "="*60)
-        print(f"🔄 [{idx+1}/{len(ordered_models)}] Inizio Valutazione Modello: {model_path}")
+        print(f"🔄 [{idx+1}/{len(ordered_models)}] Valutazione Modello: {model_path}")
         print("="*60)
         
-        # Estrazione della nomenclatura
-        n_epoche, margin, learning_rate = parse_filename(filename)
-        print(f"📝 Parametri rilevati -> Epoche: {n_epoche}, Margin: {margin}, LR: {learning_rate}")
+        # Estrazione della nomenclatura letterale per la tabella
+        custom_col_name = parse_filename_for_label(filename)
+        print(f"📝 Identificativo generato: {custom_col_name}")
         
-        # Generazione stringa della prima colonna custom
-        custom_col_name = f"Dataset - E{n_epoche} - M{margin} - LR{learning_rate}"
+        # Estrazione parametri grezzi per il funzionamento interno di evaluate.py
+        epochs_match = re.search(r'[eE]([0-9]+)', filename)
+        margin_match = re.search(r'(?:margin|M)([0-9.eE+-]+)', filename)
+        lr_match = re.search(r'[lL][rR]([0-9.eE+-]*)', filename)
         
-        # Definizione path intermedio richiesto: "results/nome_file_estratto_da_modello"
+        ep_str = epochs_match.group(1) if epochs_match else "5"
+        ma_str = margin_match.group(1) if margin_match else "05"
+        lr_str = lr_match.group(1) if lr_match else "00025"
+        
+        # Path intermedio del singolo file csv richiesto
         base_name_no_ext = os.path.splitext(filename)[0]
         intermediate_csv = os.path.join("results", f"final_eval_{base_name_no_ext}.csv")
         
-        # 3. MONKEY PATCHING DELLE VARIABILI DI EVALUATE.PY
+        # 3. MONKEY PATCHING DI EVALUATE.PY
         evaluate.model_pth = model_path
         evaluate.result_file_path = intermediate_csv
-        evaluate.MARGIN = float(margin)
-        evaluate.epoche = n_epoche
+        evaluate.epoche = ep_str
+        evaluate.margin_cl = ma_str
+        evaluate.learning_rate = lr_str
+        evaluate.MARGIN = to_float_value(ma_str)
         
-        # Gestione stringhe pulite necessarie a evaluate.py per i grafici CMC interni
-        # Estraiamo la porzione di testo grezzo numerico originale per non rompere i path grafici di evaluate.py
-        margin_match = re.search(r'(?:margin|M)(([0-9.]+))', filename, re.IGNORECASE)
-        lr_match = re.search(r'LR(([0-9.]+))', filename, re.IGNORECASE)
-        evaluate.margin_cl = margin_match.group(1) if margin_match else "05"
-        evaluate.learning_rate = lr_match.group(1) if lr_match else "00025"
-        
-        # Esecuzione della valutazione nativa
+        # Esecuzione del processo di valutazione originale
         try:
             evaluate.run_evaluation()
         except Exception as e:
-            print(f"❌ Errore critico durante la valutazione di {filename}: {e}")
+            print(f"❌ Errore durante la valutazione di {filename}: {e}")
             continue
             
-        # Post-elaborazione dell'output appena generato per rinominare la prima colonna
+        # 4. ACQUISIZIONE E STRUTTURAZIONE DATI (STILE IMMAGINE 3)
         if os.path.exists(intermediate_csv):
             df = pd.read_csv(intermediate_csv)
-            if not df.empty and 'Dataset' in df.columns:
-                df = df.rename(columns={'Dataset': custom_col_name})
-                df.to_csv(intermediate_csv, index=False)
-                final_dfs.append(df)
+            if not df.empty:
+                # Aggiorniamo prima il file .csv singolo intermedio (Immagine 1)
+                if 'Dataset' in df.columns:
+                    df = df.rename(columns={'Dataset': custom_col_name})
+                    df.to_csv(intermediate_csv, index=False)
+                
+                # Prepariamo i componenti del blocco per il file finale globale
+                other_headers = list(df.columns[1:])
+                block_header = [custom_col_name] + other_headers
+                
+                # Se non è il primo modello in assoluto, inseriamo un rigo vuoto di stacco
+                if final_rows:
+                    final_rows.append([''] * len(block_header))
+                
+                # Aggiungiamo la riga d'intestazione del blocco corrente
+                final_rows.append(block_header)
+                
+                # Aggiungiamo le righe dei dati (LogoDet-3K, FlickrLogos-32, ecc.)
+                for row in df.values.tolist():
+                    final_rows.append(row)
         
-        # 4. GESTIONE DEI PROMPT INTERATTIVI (INTERFACCIA UTENTE)
+        # 5. INTERFACCIA UTENTE (PROMPT INTERATTIVI)
         if idx == 0 and not continue_all:
             ans1 = input("\n❓ Posso continuare fino alla fine? (y/n): ").strip().lower()
             if ans1 == 'y':
@@ -135,34 +161,24 @@ def main():
                 print("⏹️ Procedura interrotta dall'utente.")
                 break
 
-    # 5. UNIFICAZIONE DEI RISULTATI NEL FILE FINALE
-    if final_dfs:
-        print(f"\n📊 Generazione del file unificato finale...")
+    # 6. SALVATAGGIO REPERTORIO FINALE UNIFICATO
+    if final_rows:
+        print(f"\n📊 Scrittura del file unificato finale...")
         
-        # Nota di design: dato che ogni dataframe ha la prima colonna con un header *diverso* 
-        # (perché include i parametri specifici di quel modello), per fare in modo che "le colonne 
-        # dell'ultimo excel siano uguali a quelle dei precedenti" senza generare colonne sfasate,
-        # applichiamo un allineamento posizionale resettando temporaneamente i nomi delle colonne.
+        # Costruiamo il DataFrame direttamente dalla matrice di righe accumulata
+        final_df = pd.DataFrame(final_rows)
         
-        standardized_dfs = []
-        target_columns = ["Configurazione Dataset"] + list(final_dfs[0].columns[1:])
-        
-        for df_temp in final_dfs:
-            df_copy = df_temp.copy()
-            df_copy.columns = target_columns
-            standardized_dfs.append(df_copy)
-            
-        final_df = pd.concat(standardized_dfs, axis=0, ignore_index=True)
-        
-        # Salvataggio con la data di oggi nel formato richiesto
         today_str = datetime.now().strftime("%d_%m_%Y")
         final_csv_path = os.path.join("results", f"final_eval_data_{today_str}.csv")
-        final_df.to_csv(final_csv_path, index=False)
         
-        print(f"🎉 Processo completato con successo!")
-        print(f"💾 File di riepilogo globale salvato in: {final_csv_path}")
+        # CRUCIALE: Salviamo con header=False e index=False perché le intestazioni di colonna
+        # cambiano ad ogni blocco e sono già state iniettate come righe di dati.
+        final_df.to_csv(final_csv_path, index=False, header=False)
+        
+        print(f"🎉 Fatto! Il file con la struttura a blocchi è pronto.")
+        print(f"💾 Salvato in: {final_csv_path}")
     else:
-        print("\n❌ Nessun dato raccolto da poter unificare.")
+        print("\n❌ Nessun dato raccolto.")
 
 
 if __name__ == "__main__":
