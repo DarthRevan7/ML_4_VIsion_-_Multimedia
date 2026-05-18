@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import random
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from main_start import margin, margin_clean, lr_clean, n_epochs
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
@@ -18,15 +19,20 @@ from dataset import LogoDataset, TripletLogoDataset, FlickrLogosDataset
 from utils import build_query_gallery
 from models import LogoNet
 
+# Parametri importati dal training per coerenza con i nomi dei file salvati e le metriche calcolate
+MARGIN = margin
+
+margin_cl = margin_clean
+learning_rate = lr_clean
+epoche = n_epochs
+
 # Model & Result paths
-model_pth = "logonet_resnet50_margin05_E5_LR2.5e-06.pth"
-result_file_path = "final_eval_logonet_resnet50_margin05_E5_LR2.5e-06.csv"
+model_pth = f"logonet_resnet50_margin{margin_cl}_E{epoche}_LR{learning_rate}.pth"
+result_file_path = f"final_eval_logonet_resnet50_margin{margin_cl}_E{epoche}_LR{learning_rate}.csv"
 
 # DB Paths
 logodet_path = "databases\\LogoDet-3K"
 flicker_path = "databases\\FlickrLogos32"
-
-MARGIN = 0.5
 
 
 def set_seed(seed=42):
@@ -130,11 +136,13 @@ def calculate_metrics_and_plots(q_embs, q_labels, g_embs, g_labels, dataset_name
     cmc_len = min(20, num_gallery)
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, cmc_len + 1), cmc_counts[:cmc_len] / valid_queries, marker='o', color='blue')
-    plt.title(f"CMC Curve - {dataset_name} - margin05_E5_LR2.5e-06")
+    # Cambiare titolo e path di salvataggio per essere più dinamici e meno hardcoded
+    plt.title(f"CMC Curve - {dataset_name} - margin{margin_cl}_E{epoche}_LR{learning_rate}")
     plt.xlabel("Rank")
     plt.ylabel("Identification Probability")
     plt.grid(True)
-    plt.savefig(f"results\\cmc_{dataset_name}_margin05_E5_LR2.5e-06.png")
+    # Cambiare il modo in cui il path di salvataggio è costruito per essere più dinamico e meno hardcoded
+    plt.savefig(f"results\\cmc_{dataset_name}_margin{margin_cl}_E{epoche}_LR{learning_rate}.png")
     plt.close()
 
     res = {f'Recall@{k}': recall_sums[k] / valid_queries for k in kr}
@@ -286,4 +294,5 @@ def run_evaluation():
 
 
 if __name__ == "__main__":
+    print(f"Parametri di valutazione: margin={MARGIN}, learning_rate={learning_rate}, epoche={epoche}")
     run_evaluation()

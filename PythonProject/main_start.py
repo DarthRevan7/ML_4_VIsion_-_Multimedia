@@ -27,21 +27,21 @@ n_epochs = 5
 stampa_ogni_n_batch = 100
 
 # Hyperparameters
-margin = 0.6
+margin = 0.5
 p = 2
-learning_rate = 0.000001
+learning_rate = 0.000003
 weight_decay = 0.001
-batch_size = 24
+batch_size = 64
 num_workers = 12
 
 # Nomenclatura File
 margin_clean = f"{margin:.1f}".replace('.', '')
-lr_clean = f"{learning_rate:.6f}".split('.')[1]
+lr_clean = np.format_float_positional(learning_rate).split('.')[1]
 
 save_name = f"logonet_resnet50_margin{margin_clean}_E{n_epochs}_LR{lr_clean}.pth"
 save_name_csv = f"training_log_margin{margin_clean}_E{n_epochs}_LR{lr_clean}.csv"
 
-print(f"Salvataggio modello in: {save_name} | Log CSV: {save_name_csv}")
+
 
 def train_one_epoch(model, dataloader, optimizer, loss_function, device, scaler):
     """Esegue il training puro."""
@@ -104,6 +104,8 @@ def validate_light(model, val_loader, loss_function, device):
 def main():
     # Crea la cartella checkpoints
     os.makedirs("checkpoints", exist_ok=True)
+
+    print(f"Salvataggio modello in: {save_name} | Log CSV: {save_name_csv}")
     
     # Configurazione per riproducibilità: attiva se volete run bit-for-bit riproducibili
     reproducible = False # Cambia a True se vuoi massima riproducibilità (può rallentare o crashare)
@@ -186,8 +188,8 @@ def main():
         avg_train_loss = train_one_epoch(model, train_loader, optimizer, loss_function, device, scaler)
         
         # 2. Salvataggio Preventivo
-        torch.save(model.state_dict(), f"checkpoints/checkpoint_epoch_{epoch+1}_10.pth")
-        print(f"💾 Checkpoint salvato: checkpoints/checkpoint_epoch_{epoch+1}.pth")
+        torch.save(model.state_dict(), f"checkpoints/checkpoint_epoch_{epoch+1}_LR{lr_clean}_M{margin_clean}.pth")
+        print(f"💾 Checkpoint salvato: checkpoints/checkpoint_epoch_{epoch+1}_LR{lr_clean}_M{margin_clean}.pth")
 
         # 3. Validazione Leggera
         val_stats = validate_light(model, val_loader, loss_function, device)
