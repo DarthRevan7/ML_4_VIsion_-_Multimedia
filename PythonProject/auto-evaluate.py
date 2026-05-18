@@ -27,7 +27,6 @@ def parse_filename_for_label(filename):
     ma = margin_match.group(1) if margin_match else ""
     lr = lr_match.group(1) if lr_match else ""
     
-    # Costruiamo la dicitura dinamica adattandoci ai casi reali (es. se LR è vuoto)
     parts = []
     if ep: parts.append(f"E{ep}")
     if ma: parts.append(f"M{ma}")
@@ -78,6 +77,10 @@ def main():
             
     print(f"📂 Trovati {len(ordered_models)} modelli totali da elaborare.")
     
+    # Individuiamo i file duplicati confrontando solo i nomi dei file (basenames)
+    basenames = [os.path.basename(m) for m in ordered_models]
+    duplicate_basenames = {b for b in basenames if basenames.count(b) > 1}
+    
     # Questa lista conterrà tutte le righe (comprese le intestazioni ripetute e le righe vuote)
     final_rows = []
     continue_all = False  
@@ -85,13 +88,29 @@ def main():
     # 2. Ciclo di esecuzione sui modelli
     for idx, model_path in enumerate(ordered_models):
         filename = os.path.basename(model_path)
+        base_name_no_ext = os.path.splitext(filename)[0]
+        
         print(f"\n" + "="*60)
         print(f"🔄 [{idx+1}/{len(ordered_models)}] Valutazione Modello: {model_path}")
         print("="*60)
         
-        # Estrazione della nomenclatura letterale per la tabella
+        # Generazione del nome base dei parametri
         custom_col_name = parse_filename_for_label(filename)
-        print(f"📝 Identificativo generato: {custom_col_name}")
+        
+        # --- MODIFICA 1: GESTIONE DEI DUPLICATI TRAMITE DATA DI MODIFICA ---
+        if filename in duplicate_basenames:
+            # Recuperiamo il timestamp di ultima modifica del file del modello
+            mtime = os.path.getmtime(model_path)
+            mtime_str = datetime.fromtimestamp(mtime).strftime("%d_%m_%Y")
+            
+            # Appendiamo la data sia alla cella Excel che al nome del file .csv intermedio
+            custom_col_name = f"{custom_col_name} - {mtime_str}"
+            intermediate_csv = os.path.join("results", f"final_eval_{base_name_no_ext}_{mtime_str}.csv")
+            print(f"⚠️ Rilevato nome duplicato! Aggiunta data di modifica: {mtime_str}")
+        else:
+            intermediate_csv = os.path.join("results", f"final_eval_{base_name_no_ext}.csv")
+            
+        print(f"📝 Identificativo finale della colonna: {custom_col_name}")
         
         # Estrazione parametri grezzi per il funzionamento interno di evaluate.py
         epochs_match = re.search(r'[eE]([0-9]+)', filename)
@@ -101,10 +120,6 @@ def main():
         ep_str = epochs_match.group(1) if epochs_match else "5"
         ma_str = margin_match.group(1) if margin_match else "05"
         lr_str = lr_match.group(1) if lr_match else "00025"
-        
-        # Path intermedio del singolo file csv richiesto
-        base_name_no_ext = os.path.splitext(filename)[0]
-        intermediate_csv = os.path.join("results", f"final_eval_{base_name_no_ext}.csv")
         
         # 3. MONKEY PATCHING DI EVALUATE.PY
         evaluate.model_pth = model_path
@@ -125,7 +140,7 @@ def main():
         if os.path.exists(intermediate_csv):
             df = pd.read_csv(intermediate_csv)
             if not df.empty:
-                # Aggiorniamo prima il file .csv singolo intermedio (Immagine 1)
+                # Aggiorniamo prima il file .csv singolo intermedio
                 if 'Dataset' in df.columns:
                     df = df.rename(columns={'Dataset': custom_col_name})
                     df.to_csv(intermediate_csv, index=False)
@@ -145,34 +160,28 @@ def main():
                 for row in df.values.tolist():
                     final_rows.append(row)
         
-        # 5. INTERFACCIA UTENTE (PROMPT INTERATTIVI)
-        if idx == 0 and not continue_all:
+        # --- MODIFICA 2: LOGICA DELLE DOMANDE RICORSIVA AD OGNI STEP ---
+        if not continue_all:
             ans1 = input("\n❓ Posso continuare fino alla fine? (y/n): ").strip().lower()
             if ans1 == 'y':
                 continue_all = True
             else:
                 ans2 = input("❓ Posso passare alla prossima valutazione? (y/n): ").strip().lower()
                 if ans2 != 'y':
-                    print("⏹️ Procedura interrotta dall'utente al primo step.")
+                    print("⏹️ Procedura interrotta dall'utente.")
                     break
-        elif idx > 0 and not continue_all:
-            ans2 = input("\n❓ Posso passare alla prossima valutazione? (y/n): ").strip().lower()
-            if ans2 != 'y':
-                print("⏹️ Procedura interrotta dall'utente.")
-                break
+
 
     # 6. SALVATAGGIO REPERTORIO FINALE UNIFICATO
     if final_rows:
         print(f"\n📊 Scrittura del file unificato finale...")
         
-        # Costruiamo il DataFrame direttamente dalla matrice di righe accumulata
         final_df = pd.DataFrame(final_rows)
         
         today_str = datetime.now().strftime("%d_%m_%Y")
         final_csv_path = os.path.join("results", f"final_eval_data_{today_str}.csv")
         
-        # CRUCIALE: Salviamo con header=False e index=False perché le intestazioni di colonna
-        # cambiano ad ogni blocco e sono già state iniettate come righe di dati.
+        # Salvataggio senza header nativo per rispettare la struttura dinamica a blocchi
         final_df.to_csv(final_csv_path, index=False, header=False)
         
         print(f"🎉 Fatto! Il file con la struttura a blocchi è pronto.")
