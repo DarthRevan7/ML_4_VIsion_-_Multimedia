@@ -19,7 +19,7 @@ from models import LogoNet
 '''
 PARAMETRI DI ADDESTRAMENTO & PATHS
 '''
-logodet_path = "datasets\\LogoDet-3K"
+logodet_path = "databases\\LogoDet-3K"
 
 # Ripresa dal checkpoint epoca 15
 checkpoint_path = "checkpoints/checkpoint_epoch_15_of_15_aug.pth"
